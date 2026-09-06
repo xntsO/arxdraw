@@ -13,9 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'Arxdraw — UML workspace',
-  description:
-    'Sketch freely. Model together. A UML workspace built with Excalidraw.',
+  title: 'Arxdraw',
+  description: 'UML diagrams in Excalidraw.',
 };
 
 export default function RootLayout({

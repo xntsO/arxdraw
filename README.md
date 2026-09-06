@@ -11,7 +11,7 @@ A web UML workspace built around the real Excalidraw React editor. This is the f
 - Browser autosave and complete `.arxdraw` project import/export, including embedded images.
 - Project undo/redo and basic model checks.
 
-Start with the two example diagrams. Edit `User` in the shared model and switch between Domain model and Checkout to see the same model in both views. Click a class absent from the active diagram to add its representation.
+Choose UML in the Excalidraw toolbar. Select Class or Interface and click the canvas to place it. Select a UML object to edit its properties. The UML panel also provides Model and Diagrams tabs. Open/save, diagrams, and project naming are in the hamburger menu. Existing `.arxdraw` projects and browser autosaves remain compatible.
 
 ## Development
 

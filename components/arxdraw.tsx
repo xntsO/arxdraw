@@ -18,38 +18,22 @@ import '@excalidraw/excalidraw/index.css';
 import {
   Box,
   Braces,
-  ChevronDown,
-  ChevronRight,
-  CircleCheck,
   Download,
   FolderOpen,
   GitBranch,
-  Moon,
   Plus,
   Redo2,
-  Settings2,
-  Sun,
   Undo2,
   X,
-  ArrowUpRight,
-  CircleHelp,
   Pencil,
-  Scan,
-  Check,
   Network,
 } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { useNativeSlots } from './native-slots';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import {
-  Sidebar,
-  SidebarProvider,
-  SidebarContent,
-  SidebarHeader,
-  SidebarFooter,
-  SidebarTrigger,
-} from '@/components/ui/sidebar';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Dialog,
   DialogContent,
@@ -57,13 +41,6 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog';
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetDescription,
-} from '@/components/ui/sheet';
 import {
   Select,
   SelectTrigger,
@@ -74,7 +51,6 @@ import {
 import {
   createProject,
   parseProject,
-  projectIssues,
   removeClassifier,
   updateClassifier,
   relationshipKinds,
@@ -174,20 +150,23 @@ export default function Arxdraw() {
   const [project, setProject] = useState<Project>(workspace.project);
   const ref = useRef(project);
   const api = useRef<ExcalidrawImperativeAPI | null>(null);
-  const ready = true;
+  const root = useRef<HTMLDivElement>(null);
+  const slots = useNativeSlots(root);
+  const [panel, setPanel] = useState(false);
+  const [tool, setTool] = useState('selection');
+  const [panelTab, setPanelTab] = useState<'tools' | 'model' | 'diagrams'>(
+    'tools',
+  );
+  const [placement, setPlacement] = useState<Classifier['kind'] | null>(null);
   const [dark, setDark] = useState(workspace.dark);
-  const [selected, setSelected] = useState('');
   const [editClass, setEditClass] = useState<Classifier | null>(null);
   const [rel, setRel] = useState<Relationship | null>(null);
-  const [dialog, setDialog] = useState<
-    'diagram' | 'rename' | 'help' | 'validation' | null
-  >(null);
+  const [dialog, setDialog] = useState<'diagram' | 'rename' | null>(null);
   const [text, setText] = useState('');
   const [renameTarget, setRenameTarget] = useState<'project' | 'diagram'>(
     'diagram',
   );
   const [notice, setNotice] = useState(workspace.error);
-  const [saveStatus, setSaveStatus] = useState('Saved locally');
   const [historyState, setHistoryState] = useState({ past: 0, future: 0 });
   const past = useRef<Project[]>([]),
     future = useRef<Project[]>([]),
@@ -216,16 +195,11 @@ export default function Arxdraw() {
   }, [notice]);
   const persist = useCallback(() => {
     if (saveTimer.current) clearTimeout(saveTimer.current);
-    setSaveStatus('Saving…');
     saveTimer.current = setTimeout(() => {
       try {
         localStorage.setItem(STORAGE, JSON.stringify(ref.current));
-        setSaveStatus('Saved locally');
       } catch {
-        setSaveStatus('Download to save');
-        flash(
-          'Browser storage is full or unavailable. Download your project to keep your work.',
-        );
+        flash('Browser storage unavailable. Save your project to a file.');
       }
     }, 650);
   }, [flash]);
@@ -244,7 +218,6 @@ export default function Arxdraw() {
       applying.current = true;
       ref.current = next;
       setProject(next);
-      setSelected('');
       lastSignature.current = '';
       const d = next.diagrams.find((d) => d.id === next.activeDiagramId)!;
       api.current?.updateScene({
@@ -321,12 +294,33 @@ export default function Arxdraw() {
       files: BinaryFiles,
     ) => {
       if (applying.current || !loaded.current) return;
+      setTool(state.activeTool.type);
       const chosen = elements.find(
         (e) => state.selectedElementIds[e.id] && !e.isDeleted,
       );
-      setSelected(
-        chosen?.customData?.modelId || chosen?.customData?.relationshipId || '',
-      );
+      const modelId = chosen?.customData?.modelId;
+      const relationshipId = chosen?.customData?.relationshipId;
+      const customTool = state.activeTool.type === 'custom';
+      const modelSelected =
+        state.activeTool.type === 'selection' && !!(modelId || relationshipId);
+      setPanel(customTool || modelSelected);
+      if (modelSelected) {
+        setPanelTab('tools');
+        const c = ref.current.classes.find((c) => c.id === modelId);
+        const r = ref.current.relationships.find(
+          (r) => r.id === relationshipId,
+        );
+        setEditClass((previous) =>
+          c ? (previous?.id === c.id ? previous : { ...c }) : null,
+        );
+        setRel((previous) =>
+          r ? (previous?.id === r.id ? previous : { ...r }) : null,
+        );
+      } else if (!customTool) {
+        setEditClass(null);
+        setRel(null);
+        setPlacement(null);
+      }
       const signature =
         elements
           .map((e) => `${e.id}:${e.versionNonce}:${e.isDeleted}`)
@@ -431,7 +425,7 @@ export default function Arxdraw() {
       }),
       `${name}.arxdraw`,
     );
-    flash('Project downloaded — includes every diagram and the shared model.');
+    flash('Project saved.');
   }
   async function openFile(file: File) {
     try {
@@ -439,12 +433,15 @@ export default function Arxdraw() {
         throw new Error('Choose a project smaller than 40 MB.');
       const p = renderProject(parseProject(await file.text()));
       commit(p, true);
-      flash('Project opened. Undo will restore your previous workspace.');
+      flash('Project opened.');
     } catch (e) {
       flash(e instanceof Error ? e.message : 'Unable to open this project.');
     }
   }
-  function addClass(kind: Classifier['kind'] = 'class') {
+  function addClass(
+    kind: Classifier['kind'] = 'class',
+    position?: { x: number; y: number },
+  ) {
     const p = ref.current;
     const id = uid();
     let n = p.classes.length + 1;
@@ -462,12 +459,33 @@ export default function Arxdraw() {
       classes: [...p.classes, c],
       diagrams: p.diagrams.map((d) =>
         d.id === p.activeDiagramId
-          ? { ...d, classIds: [...d.classIds, id] }
+          ? {
+              ...d,
+              classIds: [...d.classIds, id],
+              elements: position
+                ? [
+                    ...d.elements,
+                    {
+                      id: `placement-${id}`,
+                      type: 'rectangle',
+                      ...position,
+                      width: 250,
+                      height: 200,
+                      customData: { modelId: id, role: 'box', arxdraw: true },
+                    },
+                  ]
+                : d.elements,
+            }
           : d,
       ),
     };
-    commit(next, true);
+    commit(next, !position);
+    setPlacement(null);
+    api.current?.setActiveTool({ type: 'selection' });
+    requestAnimationFrame(() => showClass(id));
     setEditClass(c);
+    setRel(null);
+    setPanel(true);
   }
   function showClass(id: string) {
     const p = ref.current;
@@ -482,9 +500,12 @@ export default function Arxdraw() {
         },
         true,
       );
-      flash('Shared class added to this diagram.');
+      flash('Class added.');
+      requestAnimationFrame(() => showClass(id));
       return;
     }
+    api.current?.setActiveTool({ type: 'selection' });
+    setTool('selection');
     const els =
       api.current
         ?.getSceneElements()
@@ -496,7 +517,6 @@ export default function Arxdraw() {
       captureUpdate: CaptureUpdateAction.NEVER,
     });
     api.current?.scrollToContent(els, { animate: true });
-    setSelected(id);
   }
   function newRelationship() {
     const p = ref.current;
@@ -505,6 +525,11 @@ export default function Arxdraw() {
       flash('Add at least two classes to this diagram first.');
       return;
     }
+    setPlacement(null);
+    setEditClass(null);
+    setPanel(true);
+    setPanelTab('tools');
+    api.current?.setActiveTool({ type: 'custom', customType: 'uml' });
     setRel({
       id: uid(),
       from: d.classIds[0],
@@ -562,15 +587,397 @@ export default function Arxdraw() {
   const active = project.diagrams.find(
     (d) => d.id === project.activeDiagramId,
   )!;
-  const selectedClass = project.classes.find((c) => c.id === selected),
-    selectedRel = project.relationships.find((r) => r.id === selected);
-  const issues = projectIssues(project);
   const options = project.classes
     .filter((c) => active.classIds.includes(c.id))
     .map((c) => ({ value: c.id, label: c.name }));
+  function openUml(tab: 'tools' | 'model' | 'diagrams' = 'tools') {
+    setTool('custom');
+    setPanelTab(tab);
+    setPanel(true);
+    setEditClass(null);
+    setRel(null);
+    setPlacement(null);
+    api.current?.updateScene({
+      appState: { selectedElementIds: {} },
+      captureUpdate: CaptureUpdateAction.NEVER,
+    });
+    api.current?.setActiveTool({ type: 'custom', customType: 'uml' });
+  }
+  function closeUml() {
+    setTool('selection');
+    setPanel(false);
+    setPlacement(null);
+    setEditClass(null);
+    setRel(null);
+    api.current?.updateScene({
+      appState: { selectedElementIds: {} },
+      captureUpdate: CaptureUpdateAction.NEVER,
+    });
+    api.current?.setActiveTool({ type: 'selection' });
+  }
+  function place(kind: Classifier['kind']) {
+    setTool('custom');
+    setPlacement(kind);
+    setEditClass(null);
+    setRel(null);
+    api.current?.setActiveTool({ type: 'custom', customType: `uml-${kind}` });
+  }
+  const panelContent = (
+    <section className="Island arx-properties" aria-label="UML properties">
+      <div className="arx-panel-heading">
+        <span>{editClass ? editClass.name : rel ? 'Relationship' : 'UML'}</span>
+        <button
+          className="arx-close"
+          aria-label="Close UML properties"
+          onClick={closeUml}
+        >
+          <X size={16} />
+        </button>
+      </div>
+      {!editClass && !rel && (
+        <Tabs
+          value={panelTab}
+          onValueChange={(value) =>
+            setPanelTab(value as 'tools' | 'model' | 'diagrams')
+          }
+        >
+          <TabsList className="arx-panel-tabs" aria-label="UML sections">
+            <TabsTrigger value="tools">Tools</TabsTrigger>
+            <TabsTrigger value="model">Model</TabsTrigger>
+            <TabsTrigger value="diagrams">Diagrams</TabsTrigger>
+          </TabsList>
+          <TabsContent value="tools">
+            <fieldset>
+              <legend>Classifier</legend>
+              <div className="arx-tool-list">
+                <button
+                  className={placement === 'class' ? 'active' : ''}
+                  onClick={() => place('class')}
+                >
+                  <Box size={16} />
+                  Class
+                </button>
+                <button
+                  className={placement === 'interface' ? 'active' : ''}
+                  onClick={() => place('interface')}
+                >
+                  <Braces size={16} />
+                  Interface
+                </button>
+                <button
+                  className={placement === 'abstract' ? 'active' : ''}
+                  onClick={() => place('abstract')}
+                >
+                  <Box size={16} />
+                  Abstract class
+                </button>
+              </div>
+            </fieldset>
+            <fieldset>
+              <legend>Connection</legend>
+              <button className="arx-row" onClick={newRelationship}>
+                <GitBranch size={16} />
+                Relationship
+              </button>
+            </fieldset>
+            {placement && (
+              <p className="arx-hint">Click on the canvas to place.</p>
+            )}
+          </TabsContent>
+          <TabsContent value="model">
+            <div className="arx-list">
+              {project.classes.map((c) => (
+                <div className="arx-model-row" key={c.id}>
+                  <button onClick={() => showClass(c.id)}>
+                    <span className="arx-class-letter">
+                      {c.kind === 'interface' ? 'I' : 'C'}
+                    </span>
+                    <span>{c.name}</span>
+                    {!active.classIds.includes(c.id) && <Plus size={13} />}
+                  </button>
+                  <button
+                    aria-label={`Edit ${c.name}`}
+                    onClick={() => {
+                      setEditClass({ ...c });
+                      setRel(null);
+                    }}
+                  >
+                    <Pencil size={13} />
+                  </button>
+                </div>
+              ))}
+            </div>
+            <fieldset>
+              <legend>Relationships</legend>
+              {project.relationships
+                .filter((r) => active.relationshipIds.includes(r.id))
+                .map((r) => (
+                  <button
+                    className="arx-row"
+                    key={r.id}
+                    onClick={() => {
+                      setRel({ ...r });
+                      setEditClass(null);
+                    }}
+                  >
+                    <GitBranch size={14} />
+                    <span>
+                      {project.classes.find((c) => c.id === r.from)?.name} →{' '}
+                      {project.classes.find((c) => c.id === r.to)?.name}
+                    </span>
+                  </button>
+                ))}
+            </fieldset>
+          </TabsContent>
+          <TabsContent value="diagrams">
+            <div className="arx-list">
+              {project.diagrams.map((d) => (
+                <div className="arx-model-row" key={d.id}>
+                  <button
+                    className={d.id === active.id ? 'active' : ''}
+                    onClick={() => switchDiagram(d.id)}
+                  >
+                    <Network size={15} />
+                    <span>{d.name}</span>
+                  </button>
+                  <button
+                    aria-label={`Rename ${d.name}`}
+                    onClick={() => {
+                      switchDiagram(d.id);
+                      setRenameTarget('diagram');
+                      setText(d.name);
+                      setDialog('rename');
+                    }}
+                  >
+                    <Pencil size={13} />
+                  </button>
+                </div>
+              ))}
+            </div>
+            <button
+              className="arx-row"
+              onClick={() => {
+                setText('');
+                setDialog('diagram');
+              }}
+            >
+              <Plus size={16} />
+              New diagram
+            </button>
+          </TabsContent>
+        </Tabs>
+      )}
+      {editClass && (
+        <form
+          className="arx-form"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!editClass.name.trim()) return;
+            commit(
+              updateClassifier(ref.current, editClass.id, {
+                ...editClass,
+                name: editClass.name.trim(),
+              }),
+            );
+            api.current?.setActiveTool({ type: 'custom', customType: 'uml' });
+            setPanel(true);
+          }}
+        >
+          <label className="field" htmlFor="class-name">
+            <span>Name</span>
+            <Input
+              id="class-name"
+              required
+              maxLength={100}
+              value={editClass.name}
+              onChange={(e) =>
+                setEditClass({ ...editClass, name: e.target.value })
+              }
+            />
+          </label>
+          <Choice
+            label="Type"
+            value={editClass.kind}
+            onChange={(v) =>
+              setEditClass({ ...editClass, kind: v as Classifier['kind'] })
+            }
+            options={[
+              { value: 'class', label: 'Class' },
+              { value: 'interface', label: 'Interface' },
+              { value: 'abstract', label: 'Abstract class' },
+            ]}
+          />
+          <label className="field" htmlFor="class-attributes">
+            <span>Attributes</span>
+            <Textarea
+              id="class-attributes"
+              rows={4}
+              value={editClass.attributes}
+              onChange={(e) =>
+                setEditClass({ ...editClass, attributes: e.target.value })
+              }
+            />
+          </label>
+          <label className="field" htmlFor="class-operations">
+            <span>Operations</span>
+            <Textarea
+              id="class-operations"
+              rows={4}
+              value={editClass.operations}
+              onChange={(e) =>
+                setEditClass({ ...editClass, operations: e.target.value })
+              }
+            />
+          </label>
+          <label className="field" htmlFor="class-description">
+            <span>Description</span>
+            <Textarea
+              id="class-description"
+              rows={2}
+              value={editClass.description}
+              onChange={(e) =>
+                setEditClass({ ...editClass, description: e.target.value })
+              }
+            />
+          </label>
+          <Button type="submit" size="sm">
+            Apply
+          </Button>
+          <button
+            type="button"
+            className="arx-row"
+            onClick={() => {
+              const p = ref.current;
+              commit({
+                ...p,
+                diagrams: p.diagrams.map((d) =>
+                  d.id === p.activeDiagramId
+                    ? {
+                        ...d,
+                        classIds: d.classIds.filter(
+                          (id) => id !== editClass.id,
+                        ),
+                      }
+                    : d,
+                ),
+              });
+              openUml('model');
+            }}
+          >
+            Remove from diagram
+          </button>
+          <button
+            type="button"
+            className="arx-delete"
+            onClick={() => {
+              commit(removeClassifier(ref.current, editClass.id));
+              openUml('model');
+            }}
+          >
+            Delete from model
+          </button>
+        </form>
+      )}
+      {rel && (
+        <form
+          className="arx-form"
+          onSubmit={(e) => {
+            e.preventDefault();
+            saveRelationship();
+          }}
+        >
+          <Choice
+            label="Type"
+            value={rel.kind}
+            onChange={(v) =>
+              setRel({ ...rel, kind: v as Relationship['kind'] })
+            }
+            options={relationshipKinds.map((v) => ({
+              value: v,
+              label: v[0].toUpperCase() + v.slice(1),
+            }))}
+          />
+          <Choice
+            label={
+              ['aggregation', 'composition'].includes(rel.kind)
+                ? 'Whole'
+                : 'From'
+            }
+            value={rel.from}
+            onChange={(v) => setRel({ ...rel, from: v })}
+            options={options}
+          />
+          <Choice
+            label={
+              ['inheritance', 'realization'].includes(rel.kind)
+                ? 'Parent / interface'
+                : 'To'
+            }
+            value={rel.to}
+            onChange={(v) => setRel({ ...rel, to: v })}
+            options={options}
+          />
+          <label className="field" htmlFor="relationship-label">
+            <span>Label</span>
+            <Input
+              id="relationship-label"
+              value={rel.label}
+              onChange={(e) => setRel({ ...rel, label: e.target.value })}
+            />
+          </label>
+          <label className="field" htmlFor="source-multiplicity">
+            <span>Source multiplicity</span>
+            <Input
+              id="source-multiplicity"
+              value={rel.sourceMultiplicity}
+              onChange={(e) =>
+                setRel({ ...rel, sourceMultiplicity: e.target.value })
+              }
+            />
+          </label>
+          <label className="field" htmlFor="target-multiplicity">
+            <span>Target multiplicity</span>
+            <Input
+              id="target-multiplicity"
+              value={rel.targetMultiplicity}
+              onChange={(e) =>
+                setRel({ ...rel, targetMultiplicity: e.target.value })
+              }
+            />
+          </label>
+          <Button type="submit" size="sm">
+            Apply
+          </Button>
+          {project.relationships.some((r) => r.id === rel.id) && (
+            <button
+              type="button"
+              className="arx-delete"
+              onClick={() => {
+                const p = ref.current;
+                commit({
+                  ...p,
+                  relationships: p.relationships.filter((r) => r.id !== rel.id),
+                  diagrams: p.diagrams.map((d) => ({
+                    ...d,
+                    relationshipIds: d.relationshipIds.filter(
+                      (id) => id !== rel.id,
+                    ),
+                  })),
+                });
+                openUml('model');
+              }}
+            >
+              Delete relationship
+            </button>
+          )}
+        </form>
+      )}
+    </section>
+  );
   return (
     <div
-      className={`arx-app ${dark ? 'dark' : ''}`}
+      ref={root}
+      className={`arx-app ${panel ? 'arx-uml-visible' : ''}`}
       onKeyDownCapture={(e) => {
         const target = e.target as HTMLElement;
         if (target.matches('input,textarea,[contenteditable="true"]')) return;
@@ -589,433 +996,151 @@ export default function Arxdraw() {
           e.stopPropagation();
           saveFile();
         }
+        if (e.key === 'Escape' && panel) closeUml();
       }}
     >
-      <SidebarProvider
-        defaultOpen
-        style={{ '--sidebar-width': '236px' } as React.CSSProperties}
-        className="arx-layout"
-      >
-        <Sidebar className="model-sidebar">
-          <SidebarHeader className="brand-row">
-            <span className="brand" aria-label="Arxdraw">
-              arxdraw<span>✳</span>
-            </span>
-            <span className="beta">UML</span>
-            <SidebarTrigger
-              aria-label="Collapse model explorer"
-              className="ml-auto"
-            />
-          </SidebarHeader>
-          <SidebarContent className="explorer">
-            <div className="section-label">WORKSPACE</div>
-            <button
-              className="project-button"
-              onClick={() => {
-                setRenameTarget('project');
-                setText(ref.current.name);
-                setDialog('rename');
-              }}
-            >
-              <span className="project-icon">
-                <FolderOpen size={18} />
-              </span>
-              <span>
-                {project.name}
-                <small>Local project</small>
-              </span>
-              <ChevronDown size={14} />
-            </button>
-            <div className="section-label section-heading">
-              DIAGRAMS
-              <button
-                aria-label="New diagram"
-                onClick={() => {
-                  setText('');
-                  setDialog('diagram');
-                }}
-              >
-                <Plus size={15} />
-              </button>
-            </div>
-            <nav aria-label="Diagrams">
-              {project.diagrams.map((d) => (
-                <button
-                  key={d.id}
-                  className={`explorer-row ${active.id === d.id ? 'active' : ''}`}
-                  onClick={() => switchDiagram(d.id)}
-                >
-                  <Network size={16} />
-                  <span>{d.name}</span>
-                  <span className="count">{d.classIds.length}</span>
-                </button>
-              ))}
-            </nav>
-            <div className="section-label section-heading">
-              SHARED MODEL
-              <button
-                aria-label="Add class to model"
-                onClick={() => addClass()}
-              >
-                <Plus size={15} />
-              </button>
-            </div>
-            <div className="package-label">
-              <ChevronDown size={13} />
-              <FolderOpen size={14} /> {project.name.split(' ')[0]}
-            </div>
-            {project.classes.map((c) => (
-              <div
-                className={`class-row ${selected === c.id ? 'selected' : ''}`}
-                key={c.id}
-              >
-                <button
-                  className="class-main"
-                  onClick={() => showClass(c.id)}
-                  title={
-                    active.classIds.includes(c.id)
-                      ? 'Select class'
-                      : 'Add shared class to this diagram'
-                  }
-                >
-                  <span
-                    className={`class-symbol ${c.kind === 'interface' ? 'interface' : ''}`}
-                  >
-                    {c.kind === 'interface' ? 'I' : 'C'}
-                  </span>
-                  <span>{c.name}</span>
-                  {!active.classIds.includes(c.id) && <Plus size={13} />}
-                </button>
-                <button
-                  className="edit-small"
-                  aria-label={`Edit ${c.name}`}
-                  onClick={() => setEditClass({ ...c })}
-                >
-                  <Pencil size={13} />
-                </button>
-              </div>
-            ))}
-            <div className="model-note">
-              <GitBranch size={15} />
-              <p>
-                One model. Multiple views.
-                <br />
-                Class edits stay in sync.
-              </p>
-            </div>
-            <div className="section-label section-heading">
-              RELATIONSHIPS
-              <button aria-label="Add relationship" onClick={newRelationship}>
-                <Plus size={15} />
-              </button>
-            </div>
-            {project.relationships
-              .filter(
-                (r) =>
-                  active.relationshipIds.includes(r.id) &&
-                  active.classIds.includes(r.from) &&
-                  active.classIds.includes(r.to),
-              )
-              .map((r) => (
-                <button
-                  key={r.id}
-                  className="relationship-row"
-                  onClick={() => setRel({ ...r })}
-                >
-                  <ArrowUpRight size={15} />
-                  <span>
-                    {project.classes.find((c) => c.id === r.from)?.name} →{' '}
-                    {project.classes.find((c) => c.id === r.to)?.name}
-                    <small>{r.kind}</small>
-                  </span>
-                </button>
-              ))}
-            <div className="sidebar-spacer" />
-            <button
-              className="validation"
-              onClick={() => setDialog('validation')}
-            >
-              <CircleCheck
-                size={17}
-                className={issues.length ? 'warning' : 'success'}
-              />
-              <span>
-                {issues.length
-                  ? `${issues.length} model checks to review`
-                  : 'Model checks passed'}
-              </span>
-              <ChevronRight size={14} />
-            </button>
-          </SidebarContent>
-          <SidebarFooter className="sidebar-footer">
-            <span>Arxdraw · Early preview</span>
-            <button aria-label="Help" onClick={() => setDialog('help')}>
-              <CircleHelp size={17} />
-            </button>
-          </SidebarFooter>
-        </Sidebar>
-        <main className="workspace">
-          <header className="workspace-header">
-            <div className="header-left">
-              <SidebarTrigger aria-label="Toggle model explorer" />
-              <span className="breadcrumb">Workspace</span>
-              <ChevronRight size={14} />
-              <button
-                className="diagram-title"
-                onClick={() => {
-                  setRenameTarget('diagram');
-                  setText(active.name);
-                  setDialog('rename');
-                }}
-              >
-                {active.name}
-              </button>
-              <span className="type-badge">Class diagram</span>
-            </div>
-            <div className="header-actions">
-              <span className="save-status">
-                <span
-                  className={
-                    saveStatus === 'Saved locally' ? 'saved-dot' : 'saving-dot'
-                  }
-                />
-                {saveStatus}
-              </span>
-              <button
-                className="icon-button"
-                aria-label="Undo"
-                title="Undo (Ctrl+Z)"
-                disabled={!historyState.past}
-                onClick={() => undo()}
-              >
-                <Undo2 size={17} />
-              </button>
-              <button
-                className="icon-button"
-                aria-label="Redo"
-                title="Redo (Ctrl+Shift+Z)"
-                disabled={!historyState.future}
-                onClick={() => undo(true)}
-              >
-                <Redo2 size={17} />
-              </button>
-              <span className="header-divider" />
-              <button
-                className="icon-button"
-                aria-label={
-                  dark ? 'Switch to light mode' : 'Switch to dark mode'
-                }
-                onClick={() => setDark(!dark)}
-              >
-                {dark ? <Sun size={17} /> : <Moon size={17} />}
-              </button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => fileInput.current?.click()}
-              >
-                <FolderOpen size={15} />
-                <span className="button-label">Open</span>
-              </Button>
-              <Button size="sm" onClick={saveFile}>
-                <Download size={15} />
-                <span className="button-label">Save project</span>
-              </Button>
-            </div>
-          </header>
-          <div className="canvas-shell">
-            {ready && (
-              <Excalidraw
-                excalidrawAPI={(instance) => {
-                  api.current = instance;
-                  const d = ref.current.diagrams.find(
-                    (d) => d.id === ref.current.activeDiagramId,
-                  )!;
-                  if (!d.viewport)
-                    setTimeout(
-                      () =>
-                        instance.scrollToContent(
-                          d.elements as ExcalidrawElement[],
-                          { fitToViewport: true, viewportZoomFactor: 0.78 },
-                        ),
-                      100,
-                    );
-                }}
-                initialData={{
-                  elements: active.elements as ExcalidrawElement[],
-                  appState: {
-                    ...canvasViewport(active),
-                    viewBackgroundColor:
-                      active.viewport?.viewBackgroundColor || '#ffffff',
-                    currentItemFontFamily: 3,
-                  },
-                  files: project.files as BinaryFiles,
-                  scrollToContent: !active.viewport,
-                }}
-                theme={dark ? 'dark' : 'light'}
-                onChange={onChange}
-                name={`${project.name} — ${active.name}`}
-                UIOptions={{
-                  canvasActions: {
-                    loadScene: false,
-                    saveToActiveFile: false,
-                    toggleTheme: false,
-                  },
-                }}
-              >
-                <MainMenu>
-                  <MainMenu.Item
-                    onSelect={() => fileInput.current?.click()}
-                    icon={<FolderOpen size={16} />}
-                  >
-                    Open Arxdraw project
-                  </MainMenu.Item>
-                  <MainMenu.Item
-                    onSelect={saveFile}
-                    icon={<Download size={16} />}
-                  >
-                    Save Arxdraw project
-                  </MainMenu.Item>
-                  <MainMenu.Separator />
-                  <MainMenu.Item onSelect={() => exportImage('png')}>
-                    Export diagram as PNG
-                  </MainMenu.Item>
-                  <MainMenu.Item onSelect={() => exportImage('svg')}>
-                    Export diagram as SVG
-                  </MainMenu.Item>
-                  <MainMenu.DefaultItems.SaveAsImage />
-                  <MainMenu.Separator />
-                  <MainMenu.DefaultItems.ChangeCanvasBackground />
-                  <MainMenu.Item onSelect={() => setDialog('help')}>
-                    About this workspace
-                  </MainMenu.Item>
-                </MainMenu>
-              </Excalidraw>
-            )}
-            <div className="uml-palette" aria-label="UML tools">
-              <span className="palette-label">UML</span>
-              <button onClick={() => addClass()} title="Add UML class">
-                <Box size={17} />
-                <span>Class</span>
-              </button>
-              <button
-                onClick={() => addClass('interface')}
-                title="Add UML interface"
-              >
-                <Braces size={17} />
-                <span>Interface</span>
-              </button>
-              <i />
-              <button onClick={newRelationship}>
-                <GitBranch size={17} />
-                <span>Relationship</span>
-              </button>
-            </div>
-            {selectedClass && (
-              <div className="selection-card">
-                <span className="class-symbol">
-                  {selectedClass.kind === 'interface' ? 'I' : 'C'}
-                </span>
-                <div>
-                  <strong>{selectedClass.name}</strong>
-                  <small>
-                    Shared in{' '}
-                    {
-                      project.diagrams.filter((d) =>
-                        d.classIds.includes(selectedClass.id),
-                      ).length
-                    }{' '}
-                    diagrams
-                  </small>
-                </div>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setEditClass({ ...selectedClass })}
-                >
-                  <Settings2 size={14} />
-                  Edit model
-                </Button>
-              </div>
-            )}
-            {selectedRel && (
-              <div className="selection-card">
-                <GitBranch size={18} />
-                <div>
-                  <strong>{selectedRel.label || selectedRel.kind}</strong>
-                  <small>UML relationship</small>
-                </div>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setRel({ ...selectedRel })}
-                >
-                  Edit relationship
-                </Button>
-              </div>
-            )}
-            <button
-              className="fit-button"
-              onClick={() =>
-                api.current?.scrollToContent(undefined, {
+      <Excalidraw
+        excalidrawAPI={(instance) => {
+          api.current = instance;
+          const d = ref.current.diagrams.find(
+            (d) => d.id === ref.current.activeDiagramId,
+          )!;
+          if (!d.viewport)
+            setTimeout(
+              () =>
+                instance.scrollToContent(d.elements as ExcalidrawElement[], {
                   fitToViewport: true,
-                  viewportZoomFactor: 0.8,
-                })
-              }
-              aria-label="Fit diagram to screen"
-              title="Fit diagram"
-            >
-              <Scan size={17} />
-            </button>
-          </div>
-          <footer className="diagram-bar">
-            <Tabs
-              value={active.id}
-              onValueChange={(v) => switchDiagram(String(v))}
-            >
-              <TabsList variant="line" className="diagram-tabs">
-                {project.diagrams.map((d) => (
-                  <TabsTrigger value={d.id} key={d.id}>
-                    <Network size={14} />
-                    {d.name}
-                  </TabsTrigger>
-                ))}
-              </TabsList>
-            </Tabs>
+                  viewportZoomFactor: 0.78,
+                }),
+              100,
+            );
+        }}
+        initialData={{
+          elements: active.elements as ExcalidrawElement[],
+          appState: { ...canvasViewport(active), currentItemFontFamily: 3 },
+          files: project.files as BinaryFiles,
+          scrollToContent: !active.viewport,
+        }}
+        onChange={onChange}
+        theme={dark ? 'dark' : 'light'}
+        name={`${project.name} — ${active.name}`}
+        onPointerDown={(activeTool, state) => {
+          if (activeTool.type === 'custom' && placement) {
+            addClass(placement, state.origin);
+          }
+        }}
+        UIOptions={{
+          canvasActions: {
+            loadScene: false,
+            saveToActiveFile: false,
+            toggleTheme: true,
+          },
+        }}
+      >
+        <MainMenu>
+          <div className="arx-menu-name">arxdraw</div>
+          <MainMenu.Item
+            icon={<FolderOpen size={16} />}
+            onSelect={() => fileInput.current?.click()}
+          >
+            Open
+          </MainMenu.Item>
+          <MainMenu.Item icon={<Download size={16} />} onSelect={saveFile}>
+            Save project
+          </MainMenu.Item>
+          <MainMenu.DefaultItems.SaveAsImage />
+          <MainMenu.Item onSelect={() => exportImage('svg')}>
+            Export SVG
+          </MainMenu.Item>
+          <MainMenu.Separator />
+          <MainMenu.Item
+            icon={<Network size={16} />}
+            onSelect={() => openUml('diagrams')}
+          >
+            Diagrams
+          </MainMenu.Item>
+          <MainMenu.Item
+            icon={<Box size={16} />}
+            onSelect={() => openUml('model')}
+          >
+            UML model
+          </MainMenu.Item>
+          <MainMenu.Item
+            onSelect={() => {
+              setRenameTarget('project');
+              setText(ref.current.name);
+              setDialog('rename');
+            }}
+          >
+            Rename project
+          </MainMenu.Item>
+          <MainMenu.Separator />
+          <MainMenu.DefaultItems.CommandPalette />
+          <MainMenu.DefaultItems.SearchMenu />
+          <MainMenu.DefaultItems.Help />
+          <MainMenu.DefaultItems.ClearCanvas />
+          <MainMenu.Separator />
+          <MainMenu.DefaultItems.ToggleTheme
+            onSelect={(theme) => setDark(theme === 'dark')}
+          />
+          <MainMenu.DefaultItems.ChangeCanvasBackground />
+        </MainMenu>
+      </Excalidraw>
+      {slots.toolbar &&
+        createPortal(
+          <label className="ToolIcon Shape arx-uml-tool" title="UML">
+            <input
+              className="ToolIcon_type_radio ToolIcon_size_medium"
+              type="radio"
+              name="arxdraw-uml-tool"
+              aria-label="UML"
+              checked={tool === 'custom'}
+              onChange={() => openUml()}
+            />
+            <div className="ToolIcon__icon">
+              <Network size={20} />
+              <span className="ToolIcon__keybinding">UML</span>
+            </div>
+          </label>,
+          slots.toolbar,
+        )}
+      {panel &&
+        slots.properties &&
+        createPortal(panelContent, slots.properties)}
+      {slots.history &&
+        createPortal(
+          <div className="arx-history">
             <button
-              className="new-diagram-button"
-              aria-label="Add diagram"
-              onClick={() => {
-                setText('');
-                setDialog('diagram');
-              }}
+              className="ToolIcon ToolIcon_type_button ToolIcon_size_medium"
+              aria-label="Undo"
+              title="Undo"
+              disabled={!historyState.past}
+              onClick={() => undo()}
             >
-              <Plus size={16} />
+              <div className="ToolIcon__icon">
+                <Undo2 size={18} />
+              </div>
             </button>
-            <span className="diagram-meta">
-              {active.classIds.length} classifiers<span>·</span>
-              {
-                active.relationshipIds.filter((id) => {
-                  const r = project.relationships.find((r) => r.id === id);
-                  return (
-                    r &&
-                    active.classIds.includes(r.from) &&
-                    active.classIds.includes(r.to)
-                  );
-                }).length
-              }{' '}
-              relationships
-            </span>
-            <span className="powered">Built with Excalidraw</span>
-          </footer>
-        </main>
-      </SidebarProvider>
+            <button
+              className="ToolIcon ToolIcon_type_button ToolIcon_size_medium"
+              aria-label="Redo"
+              title="Redo"
+              disabled={!historyState.future}
+              onClick={() => undo(true)}
+            >
+              <div className="ToolIcon__icon">
+                <Redo2 size={18} />
+              </div>
+            </button>
+          </div>,
+          slots.history,
+        )}
       <input
         ref={fileInput}
         type="file"
         accept=".arxdraw,.json"
         className="sr-only"
-        aria-label="Open Arxdraw project file"
+        aria-label="Open project file"
         onChange={(e) => {
           const f = e.target.files?.[0];
           if (f) void openFile(f);
@@ -1023,399 +1148,81 @@ export default function Arxdraw() {
         }}
       />
       {notice && (
-        <output className="notice">
+        <output className="arx-notice">
           {notice}
-          <button
-            aria-label="Dismiss notification"
-            onClick={() => setNotice('')}
-          >
+          <button aria-label="Dismiss" onClick={() => setNotice('')}>
             <X size={16} />
           </button>
         </output>
       )}
-      <Sheet
-        open={!!editClass}
-        onOpenChange={(open) => {
-          if (!open) setEditClass(null);
-        }}
-      >
-        <SheetContent className="model-sheet">
-          <SheetHeader>
-            <SheetTitle>Edit classifier</SheetTitle>
-            <SheetDescription>
-              Changes apply to every diagram using this class.
-            </SheetDescription>
-          </SheetHeader>
-          {editClass && (
-            <form
-              className="model-form"
-              onSubmit={(e) => {
-                e.preventDefault();
-                commit(
-                  updateClassifier(ref.current, editClass.id, {
-                    ...editClass,
-                    name: editClass.name.trim(),
-                  }),
-                );
-                setEditClass(null);
-                flash('Shared model updated across all diagrams.');
-              }}
-            >
-              <label className="field" htmlFor="classifier-name">
-                <span>Name</span>
-                <Input
-                  id="classifier-name"
-                  required
-                  maxLength={100}
-                  value={editClass.name}
-                  onChange={(e) =>
-                    setEditClass({ ...editClass, name: e.target.value })
-                  }
-                />
-              </label>
-              <Choice
-                label="Classifier type"
-                value={editClass.kind}
-                onChange={(v) =>
-                  setEditClass({ ...editClass, kind: v as Classifier['kind'] })
-                }
-                options={[
-                  { value: 'class', label: 'Class' },
-                  { value: 'interface', label: 'Interface' },
-                  { value: 'abstract', label: 'Abstract class' },
-                ]}
-              />
-              <label className="field" htmlFor="classifier-attributes">
-                <span>Attributes</span>
-                <Textarea
-                  id="classifier-attributes"
-                  rows={5}
-                  value={editClass.attributes}
-                  onChange={(e) =>
-                    setEditClass({ ...editClass, attributes: e.target.value })
-                  }
-                  placeholder="- name: String"
-                />
-                <small>One per line · + public · - private · # protected</small>
-              </label>
-              <label className="field" htmlFor="classifier-operations">
-                <span>Operations</span>
-                <Textarea
-                  id="classifier-operations"
-                  rows={5}
-                  value={editClass.operations}
-                  onChange={(e) =>
-                    setEditClass({ ...editClass, operations: e.target.value })
-                  }
-                  placeholder="+ method(): Type"
-                />
-              </label>
-              <label className="field" htmlFor="classifier-description">
-                <span>Description</span>
-                <Textarea
-                  id="classifier-description"
-                  rows={3}
-                  value={editClass.description}
-                  onChange={(e) =>
-                    setEditClass({ ...editClass, description: e.target.value })
-                  }
-                  placeholder="What does this class represent?"
-                />
-              </label>
-              <Button type="submit">
-                <Check size={16} />
-                Apply to all diagrams
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => {
-                  const p = ref.current;
-                  commit({
-                    ...p,
-                    diagrams: p.diagrams.map((d) =>
-                      d.id === p.activeDiagramId
-                        ? {
-                            ...d,
-                            classIds: d.classIds.filter(
-                              (id) => id !== editClass.id,
-                            ),
-                          }
-                        : d,
-                    ),
-                  });
-                  setEditClass(null);
-                  flash(
-                    'Removed from this view. The shared class is still in your model.',
-                  );
-                }}
-              >
-                Remove from this diagram
-              </Button>
-              <button
-                type="button"
-                className="delete-link"
-                onClick={() => {
-                  commit(removeClassifier(ref.current, editClass.id));
-                  setEditClass(null);
-                  flash(
-                    'Class and its relationships deleted from the model. Undo is available.',
-                  );
-                }}
-              >
-                Delete from entire model
-              </button>
-            </form>
-          )}
-        </SheetContent>
-      </Sheet>
-      <Dialog
-        open={!!rel}
-        onOpenChange={(open) => {
-          if (!open) setRel(null);
-        }}
-      >
-        <DialogContent className="relationship-dialog">
-          <DialogHeader>
-            <DialogTitle>UML relationship</DialogTitle>
-            <DialogDescription>
-              Connect two classifiers in this diagram.
-            </DialogDescription>
-          </DialogHeader>
-          {rel && (
-            <form
-              className="model-form"
-              onSubmit={(e) => {
-                e.preventDefault();
-                saveRelationship();
-              }}
-            >
-              <Choice
-                label="Type"
-                value={rel.kind}
-                onChange={(v) =>
-                  setRel({ ...rel, kind: v as Relationship['kind'] })
-                }
-                options={relationshipKinds.map((v) => ({
-                  value: v,
-                  label: v[0].toUpperCase() + v.slice(1),
-                }))}
-              />
-              <Choice
-                label={
-                  ['aggregation', 'composition'].includes(rel.kind)
-                    ? 'Whole (diamond end)'
-                    : 'From'
-                }
-                value={rel.from}
-                onChange={(v) => setRel({ ...rel, from: v })}
-                options={options}
-              />
-              <Choice
-                label={
-                  ['inheritance', 'realization'].includes(rel.kind)
-                    ? 'To (parent / interface)'
-                    : 'To'
-                }
-                value={rel.to}
-                onChange={(v) => setRel({ ...rel, to: v })}
-                options={options}
-              />
-              <label className="field" htmlFor="relationship-label">
-                <span>Label</span>
-                <Input
-                  id="relationship-label"
-                  value={rel.label}
-                  onChange={(e) => setRel({ ...rel, label: e.target.value })}
-                  placeholder="e.g. places"
-                />
-              </label>
-              <div className="field-pair">
-                <label className="field" htmlFor="source-multiplicity">
-                  <span>Source multiplicity</span>
-                  <Input
-                    id="source-multiplicity"
-                    value={rel.sourceMultiplicity}
-                    onChange={(e) =>
-                      setRel({ ...rel, sourceMultiplicity: e.target.value })
-                    }
-                    placeholder="1"
-                  />
-                </label>
-                <label className="field" htmlFor="target-multiplicity">
-                  <span>Target multiplicity</span>
-                  <Input
-                    id="target-multiplicity"
-                    value={rel.targetMultiplicity}
-                    onChange={(e) =>
-                      setRel({ ...rel, targetMultiplicity: e.target.value })
-                    }
-                    placeholder="0..*"
-                  />
-                </label>
-              </div>
-              <Button type="submit">Save relationship</Button>
-              {project.relationships.some((r) => r.id === rel.id) && (
-                <button
-                  type="button"
-                  className="delete-link"
-                  onClick={() => {
-                    const p = ref.current;
-                    commit({
-                      ...p,
-                      relationships: p.relationships.filter(
-                        (r) => r.id !== rel.id,
-                      ),
-                      diagrams: p.diagrams.map((d) => ({
-                        ...d,
-                        relationshipIds: d.relationshipIds.filter(
-                          (id) => id !== rel.id,
-                        ),
-                      })),
-                    });
-                    setRel(null);
-                  }}
-                >
-                  Delete relationship from model
-                </button>
-              )}
-            </form>
-          )}
-        </DialogContent>
-      </Dialog>
       <Dialog
         open={!!dialog}
         onOpenChange={(open) => {
           if (!open) setDialog(null);
         }}
       >
-        <DialogContent className="info-dialog">
+        <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {dialog === 'diagram'
-                ? 'New class diagram'
-                : dialog === 'rename'
-                  ? `Rename ${renameTarget}`
-                  : dialog === 'validation'
-                    ? 'Model checks'
-                    : 'Welcome to Arxdraw'}
+              {dialog === 'diagram' ? 'New diagram' : `Rename ${renameTarget}`}
             </DialogTitle>
-            <DialogDescription>
-              {dialog === 'diagram'
-                ? 'Start a new view of your shared model.'
-                : dialog === 'rename'
-                  ? 'Give your workspace or diagram a clear name.'
-                  : dialog === 'validation'
-                    ? 'Basic checks for names, inheritance cycles, and realizations.'
-                    : 'An Excalidraw canvas with a shared UML model.'}
+            <DialogDescription className="sr-only">
+              Enter a name.
             </DialogDescription>
           </DialogHeader>
-          {(dialog === 'diagram' || dialog === 'rename') && (
-            <form
-              className="model-form"
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (!text.trim()) return;
-                const p = ref.current;
-                if (dialog === 'diagram') {
-                  const id = uid();
-                  commit({
-                    ...p,
-                    activeDiagramId: id,
-                    diagrams: [
-                      ...p.diagrams,
-                      {
-                        id,
-                        name: text.trim(),
-                        classIds: [],
-                        relationshipIds: [],
-                        elements: [],
+          <form
+            className="arx-form"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!text.trim()) return;
+              const p = ref.current;
+              if (dialog === 'diagram') {
+                const id = uid();
+                commit({
+                  ...p,
+                  activeDiagramId: id,
+                  diagrams: [
+                    ...p.diagrams,
+                    {
+                      id,
+                      name: text.trim(),
+                      classIds: [],
+                      relationshipIds: [],
+                      elements: [],
+                    },
+                  ],
+                });
+              } else
+                commit(
+                  renameTarget === 'project'
+                    ? { ...p, name: text.trim() }
+                    : {
+                        ...p,
+                        diagrams: p.diagrams.map((d) =>
+                          d.id === p.activeDiagramId
+                            ? { ...d, name: text.trim() }
+                            : d,
+                        ),
                       },
-                    ],
-                  });
-                } else {
-                  commit(
-                    renameTarget === 'project'
-                      ? { ...p, name: text.trim() }
-                      : {
-                          ...p,
-                          diagrams: p.diagrams.map((d) =>
-                            d.id === p.activeDiagramId
-                              ? { ...d, name: text.trim() }
-                              : d,
-                          ),
-                        },
-                  );
-                }
-                setDialog(null);
-              }}
-            >
-              <label className="field" htmlFor="diagram-name">
-                <span>Name</span>
-                <Input
-                  id="diagram-name"
-                  required
-                  value={text}
-                  maxLength={100}
-                  onChange={(e) => setText(e.target.value)}
-                />
-              </label>
-              <Button type="submit">
-                {dialog === 'diagram' ? 'Create diagram' : 'Save name'}
-              </Button>
-            </form>
-          )}
-          {dialog === 'validation' && (
-            <div className="help-copy">
-              {issues.length ? (
-                <ul>
-                  {issues.map((issue, i) => (
-                    <li key={i}>{issue}</li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="check-result">
-                  <CircleCheck size={20} /> All basic model checks passed.
-                </p>
-              )}
-              <p>
-                These checks cover the first class-diagram milestone. Full UML
-                validation and ArgoUML design critics are planned.
-              </p>
-            </div>
-          )}
-          {dialog === 'help' && (
-            <div className="help-copy">
-              <p>
-                <strong>Sketch</strong> with the familiar Excalidraw toolbar.
-                Add structured classes and connections from the UML palette.
-              </p>
-              <p>
-                <strong>Edit a class</strong> using the pencil in the shared
-                model or “Edit model” after selecting it. Edits appear in every
-                diagram.
-              </p>
-              <p>
-                <strong>Reuse a class</strong> by opening another diagram and
-                clicking it in the shared model. Its position is independent in
-                each view.
-              </p>
-              <p>
-                <strong>Save your work</strong> with Save project. An .arxdraw
-                file contains all diagrams, model data, and images. Browser
-                autosave stays on this device.
-              </p>
-              <p>
-                <strong>Undo / redo</strong> works across model and canvas
-                changes with Ctrl/Cmd+Z and Ctrl/Cmd+Shift+Z.
-              </p>
-              <p className="scope-note">
-                Early preview: class diagrams and shared models. XMI, code
-                engineering, collaboration, and the remaining ArgoUML features
-                are not available yet.
-              </p>
-            </div>
-          )}
+                );
+              setDialog(null);
+              openUml('diagrams');
+            }}
+          >
+            <label className="field" htmlFor="diagram-name">
+              <span>Name</span>
+              <Input
+                id="diagram-name"
+                required
+                maxLength={100}
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+              />
+            </label>
+            <Button type="submit">
+              {dialog === 'diagram' ? 'Create' : 'Save'}
+            </Button>
+          </form>
         </DialogContent>
       </Dialog>
     </div>
