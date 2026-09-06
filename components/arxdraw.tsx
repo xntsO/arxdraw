@@ -27,6 +27,7 @@ import {
   Undo2,
   X,
   Pencil,
+  Trash2,
   Network,
 } from 'lucide-react';
 import { createPortal } from 'react-dom';
@@ -64,6 +65,7 @@ import {
   createBlankProject,
   parseProject,
   removeClassifier,
+  removeDiagram,
   updateClassifier,
   relationshipKinds,
   uid,
@@ -774,6 +776,24 @@ export default function Arxdraw() {
                     }}
                   >
                     <Pencil size={13} />
+                  </button>
+                  <button
+                    className="arx-diagram-delete"
+                    aria-label={`Delete ${d.name}`}
+                    title={`Delete ${d.name}`}
+                    onClick={() => {
+                      const next = removeDiagram(ref.current, d.id);
+                      const active = next.diagrams.find(
+                        (diagram) => diagram.id === next.activeDiagramId,
+                      )!;
+                      commit(
+                        next,
+                        !active.viewport && active.elements.length > 0,
+                      );
+                      flash(`“${d.name}” deleted. Undo to restore.`);
+                    }}
+                  >
+                    <Trash2 size={13} />
                   </button>
                 </div>
               ))}

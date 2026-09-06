@@ -5,6 +5,7 @@ import {
   parseProject,
   updateClassifier,
   removeClassifier,
+  removeDiagram,
   projectIssues,
 } from '../lib/model.ts';
 
@@ -52,6 +53,34 @@ void test('deleting a model class removes every reference and incident relations
       (d) => !d.classIds.includes('order') && d.relationshipIds.length === 0,
     ),
   );
+});
+void test('deleting a diagram preserves the model, other scenes, and the undo snapshot', () => {
+  const before = createProject();
+  before.diagrams[1].elements = [
+    { id: 'sketch', type: 'rectangle', x: 20, y: 30, width: 100, height: 80 },
+  ];
+  const snapshot = structuredClone(before);
+  const after = removeDiagram(before, 'domain');
+  assert.equal(after.activeDiagramId, 'checkout');
+  assert.deepEqual(after.diagrams, [before.diagrams[1]]);
+  assert.deepEqual(after.classes, before.classes);
+  assert.deepEqual(after.relationships, before.relationships);
+  assert.deepEqual(before, snapshot);
+  assert.deepEqual(parseProject(JSON.stringify(after)), after);
+  assert.equal(removeDiagram(before, 'checkout').activeDiagramId, 'domain');
+});
+void test('deleting the final diagram opens a blank scene without discarding the model', () => {
+  const before = removeDiagram(createProject(), 'checkout');
+  const after = removeDiagram(before, 'domain');
+  assert.equal(after.diagrams.length, 1);
+  assert.notEqual(after.activeDiagramId, 'domain');
+  assert.equal(after.activeDiagramId, after.diagrams[0].id);
+  assert.deepEqual(after.diagrams[0].elements, []);
+  assert.deepEqual(after.diagrams[0].classIds, []);
+  assert.deepEqual(after.diagrams[0].relationshipIds, []);
+  assert.deepEqual(after.classes, before.classes);
+  assert.deepEqual(after.relationships, before.relationships);
+  assert.deepEqual(parseProject(JSON.stringify(after)), after);
 });
 void test('import rejects missing references, duplicate IDs, invalid viewport, and unsupported versions', () => {
   const wrong = createProject();

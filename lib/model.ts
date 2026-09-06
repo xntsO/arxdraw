@@ -89,6 +89,21 @@ export function createBlankProject(): Project {
   };
 }
 
+export function removeDiagram(project: Project, id: string): Project {
+  const index = project.diagrams.findIndex((d) => d.id === id);
+  if (index === -1) return project;
+  const diagrams = project.diagrams.filter((d) => d.id !== id);
+  if (!diagrams.length) diagrams.push(createBlankProject().diagrams[0]);
+  return {
+    ...project,
+    diagrams,
+    activeDiagramId:
+      project.activeDiagramId === id
+        ? diagrams[Math.min(index, diagrams.length - 1)].id
+        : project.activeDiagramId,
+  };
+}
+
 export function createProject(): Project {
   return {
     format: 'arxdraw',
