@@ -202,6 +202,14 @@
   padding: 4px 8px 12px;
   letter-spacing: -0.7px;
 }
+.arx-welcome-name {
+  font-size: 48px;
+  font-weight: 600;
+  letter-spacing: -2px;
+}
+.excalidraw .HelpDialog__header > :not(.arx-help-link) {
+  display: none;
+}
 .excalidraw .undo-redo-buttons > :not(.arx-history) {
   display: none;
 }

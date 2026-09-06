@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Excalidraw,
   MainMenu,
+  WelcomeScreen,
   CaptureUpdateAction,
   exportToBlob,
   exportToSvg,
@@ -159,7 +160,7 @@ function loadWorkspace() {
   } catch {}
   return { project: renderProject(p), error, dark };
 }
-export default function Arxdraw() {
+export default function ArxDraw() {
   const [workspace] = useState(loadWorkspace);
   const [project, setProject] = useState<Project>(workspace.project);
   const ref = useRef(project);
@@ -1082,7 +1083,7 @@ export default function Arxdraw() {
         }}
       >
         <MainMenu>
-          <div className="arx-menu-name">arxdraw</div>
+          <div className="arx-menu-name">ArxDraw</div>
           <MainMenu.Item
             icon={<FilePlus2 size={16} />}
             onSelect={() => setNewProjectOpen(true)}
@@ -1135,7 +1136,41 @@ export default function Arxdraw() {
           />
           <MainMenu.DefaultItems.ChangeCanvasBackground />
         </MainMenu>
+        <WelcomeScreen>
+          <WelcomeScreen.Center>
+            <WelcomeScreen.Center.Logo>
+              <span className="arx-welcome-name">ArxDraw</span>
+            </WelcomeScreen.Center.Logo>
+            <WelcomeScreen.Center.Menu>
+              <WelcomeScreen.Center.MenuItem
+                icon={<FolderOpen size={16} />}
+                onSelect={() => fileInput.current?.click()}
+              >
+                Open
+              </WelcomeScreen.Center.MenuItem>
+              <WelcomeScreen.Center.MenuItemHelp />
+            </WelcomeScreen.Center.Menu>
+          </WelcomeScreen.Center>
+          <WelcomeScreen.Hints.MenuHint />
+          <WelcomeScreen.Hints.ToolbarHint />
+          <WelcomeScreen.Hints.HelpHint />
+        </WelcomeScreen>
       </Excalidraw>
+      {slots.helpHeader &&
+        createPortal(
+          <a
+            className="HelpDialog__btn arx-help-link"
+            href="https://github.com/xntsO/arxdraw"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <span className="HelpDialog__link-icon">
+              <GitBranch size={20} />
+            </span>
+            GitHub
+          </a>,
+          slots.helpHeader,
+        )}
       {slots.toolbar &&
         createPortal(
           <label className="ToolIcon Shape arx-uml-tool" title="UML">

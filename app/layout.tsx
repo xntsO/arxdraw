@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'Arxdraw',
-  description: 'UML diagrams in Excalidraw.',
+  title: 'ArxDraw',
+  description: 'Draw and edit UML diagrams with ArxDraw.',
 };
 
 export default function RootLayout({

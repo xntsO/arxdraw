@@ -1,4 +1,4 @@
-# Arxdraw
+# ArxDraw
 
 A web UML workspace built around the real Excalidraw React editor. This is the first milestone, not full ArgoUML parity.
 

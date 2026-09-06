@@ -20,7 +20,7 @@ export default function Home() {
   ) : (
     <main className="boot">
       <strong>
-        arxdraw<span>✳</span>
+        ArxDraw<span>✳</span>
       </strong>
       <p>
         {error
