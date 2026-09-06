@@ -20,6 +20,7 @@ import {
   Braces,
   Download,
   FolderOpen,
+  FilePlus2,
   GitBranch,
   Plus,
   Redo2,
@@ -31,6 +32,16 @@ import {
 import { createPortal } from 'react-dom';
 import { useNativeSlots } from './native-slots';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogCancel,
+  AlertDialogAction,
+} from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -50,6 +61,7 @@ import {
 } from '@/components/ui/select';
 import {
   createProject,
+  createBlankProject,
   parseProject,
   removeClassifier,
   updateClassifier,
@@ -161,6 +173,7 @@ export default function Arxdraw() {
   const [dark, setDark] = useState(workspace.dark);
   const [editClass, setEditClass] = useState<Classifier | null>(null);
   const [rel, setRel] = useState<Relationship | null>(null);
+  const [newProjectOpen, setNewProjectOpen] = useState(false);
   const [dialog, setDialog] = useState<'diagram' | 'rename' | null>(null);
   const [text, setText] = useState('');
   const [renameTarget, setRenameTarget] = useState<'project' | 'diagram'>(
@@ -426,6 +439,17 @@ export default function Arxdraw() {
       `${name}.arxdraw`,
     );
     flash('Project saved.');
+  }
+  function startNewProject(saveCurrent: boolean) {
+    if (saveCurrent) saveFile();
+    // Keep the previous project in the existing project-level undo history.
+    applying.current = true;
+    api.current?.resetScene();
+    commit(createBlankProject());
+    closeUml();
+    setDialog(null);
+    setNewProjectOpen(false);
+    setNotice('');
   }
   async function openFile(file: File) {
     try {
@@ -1040,6 +1064,12 @@ export default function Arxdraw() {
         <MainMenu>
           <div className="arx-menu-name">arxdraw</div>
           <MainMenu.Item
+            icon={<FilePlus2 size={16} />}
+            onSelect={() => setNewProjectOpen(true)}
+          >
+            New
+          </MainMenu.Item>
+          <MainMenu.Item
             icon={<FolderOpen size={16} />}
             onSelect={() => fileInput.current?.click()}
           >
@@ -1155,6 +1185,25 @@ export default function Arxdraw() {
           </button>
         </output>
       )}
+      <AlertDialog open={newProjectOpen} onOpenChange={setNewProjectOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>New project</AlertDialogTitle>
+            <AlertDialogDescription>
+              Save a copy of “{project.name}” first?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <Button variant="outline" onClick={() => startNewProject(false)}>
+              Start new
+            </Button>
+            <AlertDialogAction onClick={() => startNewProject(true)}>
+              Save &amp; start new
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <Dialog
         open={!!dialog}
         onOpenChange={(open) => {

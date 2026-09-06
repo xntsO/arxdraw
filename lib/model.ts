@@ -67,6 +67,28 @@ export type Project = {
   files: Record<string, unknown>;
 };
 export const uid = () => crypto.randomUUID();
+export function createBlankProject(): Project {
+  const id = uid();
+  return {
+    format: 'arxdraw',
+    version: 1,
+    name: 'Untitled',
+    activeDiagramId: id,
+    classes: [],
+    relationships: [],
+    files: {},
+    diagrams: [
+      {
+        id,
+        name: 'Diagram 1',
+        classIds: [],
+        relationshipIds: [],
+        elements: [],
+      },
+    ],
+  };
+}
+
 export function createProject(): Project {
   return {
     format: 'arxdraw',
