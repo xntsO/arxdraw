@@ -8,6 +8,45 @@ import {
   removeDiagram,
   projectIssues,
 } from '../lib/model.ts';
+import type { DiagramKind } from '../lib/model.ts';
+
+void test('all diagram kinds survive saving and loading, while legacy diagrams remain valid', () => {
+  const project = createProject();
+  const kinds: DiagramKind[] = [
+    'class',
+    'use-case',
+    'sequence',
+    'activity',
+    'state',
+    'component',
+    'deployment',
+    'object',
+    'package',
+    'communication',
+  ];
+  project.diagrams = kinds.map((kind) => ({
+    id: kind,
+    name: kind,
+    kind,
+    classIds: [],
+    relationshipIds: [],
+    elements: [],
+  }));
+  project.activeDiagramId = 'sequence';
+  assert.deepEqual(parseProject(JSON.stringify(project)), project);
+  assert.deepEqual(
+    parseProject(JSON.stringify(createProject())),
+    createProject(),
+  );
+  assert.throws(() =>
+    parseProject(
+      JSON.stringify({
+        ...project,
+        diagrams: [{ ...project.diagrams[0], kind: 'invalid' }],
+      }),
+    ),
+  );
+});
 
 void test('two diagrams reference one class and retain their independent views after editing', () => {
   const before = createProject();

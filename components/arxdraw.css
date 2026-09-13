@@ -159,6 +159,48 @@
   flex-direction: column;
   gap: 14px;
 }
+.arx-practice-tools {
+  margin-top: 14px;
+}
+.arx-properties .arx-member-editor [data-slot='select-trigger'] {
+  width: 42px;
+  padding: 4px;
+}
+.arx-properties .arx-member-editor [data-slot='button'] {
+  background: transparent;
+  color: inherit;
+}
+.arx-properties .arx-member-editor [data-slot='button']:hover {
+  background: var(--button-hover-bg);
+}
+.arx-code-dialog {
+  width: min(760px, calc(100vw - 32px));
+  max-width: 760px;
+  max-height: calc(100dvh - 48px);
+  overflow-y: auto;
+}
+.arx-code-content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 16px;
+}
+.arx-code-source {
+  min-height: 300px;
+  font-family: ui-monospace, monospace;
+  line-height: 1.5;
+  font-size: 14px;
+}
+.arx-java-source {
+  overflow-x: auto;
+  white-space: pre;
+  padding: 12px;
+  font-size: 13px;
+}
+.arx-check-list {
+  list-style: disc;
+  padding-left: 20px;
+}
 .arx-form .field,
 .arx-properties .field {
   display: flex;

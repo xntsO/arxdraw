@@ -3,6 +3,7 @@ import type { ExcalidrawElementSkeleton } from '@excalidraw/excalidraw/data/tran
 import type { Diagram, Project } from './model';
 
 import { diagramSkeletons } from './diagram';
+import { repairSceneBindings } from './bindings';
 
 export function renderDiagram(p: Project, d: Diagram): Diagram {
   const raw = diagramSkeletons(p, d);
@@ -19,7 +20,7 @@ export function renderDiagram(p: Project, d: Diagram): Diagram {
   const freehand = d.elements.filter(
     (e) => !e.customData?.arxdraw && !generatedIds.has(e.id),
   );
-  return { ...d, elements: [...elements, ...freehand] };
+  return { ...d, elements: repairSceneBindings([...elements, ...freehand]) };
 }
 export function renderProject(p: Project): Project {
   return { ...p, diagrams: p.diagrams.map((d) => renderDiagram(p, d)) };

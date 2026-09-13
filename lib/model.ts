@@ -43,9 +43,21 @@ export type SceneElement = {
   [key: string]: unknown;
 };
 // The UML model is shared; each diagram owns its visual representations and freehand scene.
+export type DiagramKind =
+  | 'class'
+  | 'use-case'
+  | 'sequence'
+  | 'activity'
+  | 'state'
+  | 'component'
+  | 'deployment'
+  | 'object'
+  | 'package'
+  | 'communication';
 export type Diagram = {
   id: string;
   name: string;
+  kind?: DiagramKind;
   classIds: string[];
   relationshipIds: string[];
   elements: SceneElement[];
@@ -262,7 +274,7 @@ export function parseProject(raw: string): Project {
     throw new Error('This project is too large (40 MB maximum).');
   const p = JSON.parse(raw);
   const fail = () => {
-    throw new Error('This is not a valid Arxdraw v1 project.');
+    throw new Error('This is not a valid ArxDraw v1 project.');
   };
   if (
     !p ||
@@ -312,6 +324,19 @@ export function parseProject(raw: string): Project {
       !d ||
       !str(d.id) ||
       !str(d.name) ||
+      (d.kind !== undefined &&
+        ![
+          'class',
+          'use-case',
+          'sequence',
+          'activity',
+          'state',
+          'component',
+          'deployment',
+          'object',
+          'package',
+          'communication',
+        ].includes(d.kind)) ||
       !Array.isArray(d.classIds) ||
       !d.classIds.every((id: string) => classIds.has(id)) ||
       !Array.isArray(d.relationshipIds) ||

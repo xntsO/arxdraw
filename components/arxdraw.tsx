@@ -7,6 +7,7 @@ import {
   CaptureUpdateAction,
   exportToBlob,
   exportToSvg,
+  convertToExcalidrawElements,
 } from '@excalidraw/excalidraw';
 import type {
   ExcalidrawImperativeAPI,
@@ -15,6 +16,7 @@ import type {
   BinaryFileData,
 } from '@excalidraw/excalidraw/types';
 import type { ExcalidrawElement } from '@excalidraw/excalidraw/element/types';
+import type { ExcalidrawElementSkeleton } from '@excalidraw/excalidraw/data/transform';
 import '@excalidraw/excalidraw/index.css';
 import {
   Box,
@@ -33,6 +35,17 @@ import {
 } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { useNativeSlots } from './native-slots';
+import { CodeTools } from './code-tools';
+import { MemberEditor } from './member-editor';
+import {
+  diagramKinds,
+  practiceTools,
+  symbolSkeletons,
+  exampleSkeletons,
+  exampleTitle,
+  isPracticeConnector,
+} from '@/lib/practice';
+import type { PracticeDiagramKind } from '@/lib/practice';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import {
   AlertDialog,
@@ -69,10 +82,18 @@ import {
   removeDiagram,
   updateClassifier,
   relationshipKinds,
+  projectIssues,
   uid,
 } from '@/lib/model';
-import type { Project, Classifier, Relationship, Diagram } from '@/lib/model';
+import type {
+  Project,
+  Classifier,
+  Relationship,
+  Diagram,
+  DiagramKind,
+} from '@/lib/model';
 import { renderProject } from '@/lib/scene';
+import { reconcileDuplicatedClasses } from '@/lib/scene-model';
 import './arxdraw.css';
 
 const STORAGE = 'arxdraw.project.v1';
@@ -173,6 +194,18 @@ export default function ArxDraw() {
     'tools',
   );
   const [placement, setPlacement] = useState<Classifier['kind'] | null>(null);
+  const [paletteKind, setPaletteKind] = useState<DiagramKind>(
+    workspace.project.diagrams.find(
+      (d) => d.id === workspace.project.activeDiagramId,
+    )?.kind || 'class',
+  );
+  const [practicePlacement, setPracticePlacement] = useState<string | null>(
+    null,
+  );
+  const [newDiagramKind, setNewDiagramKind] = useState<DiagramKind>('class');
+  const [newDiagramContent, setNewDiagramContent] = useState('blank');
+  const [codeOpen, setCodeOpen] = useState(false);
+  const [checkResults, setCheckResults] = useState<string[] | null>(null);
   const [dark, setDark] = useState(workspace.dark);
   const [editClass, setEditClass] = useState<Classifier | null>(null);
   const [rel, setRel] = useState<Relationship | null>(null);
@@ -193,6 +226,11 @@ export default function ArxDraw() {
     loaded = useRef(true),
     lastSignature = useRef('');
   const fileInput = useRef<HTMLInputElement>(null);
+  const nativeConnector = useRef<{
+    text?: string;
+    fontSize?: number;
+    fontFamily?: number;
+  } | null>(null);
   const sync = useCallback(
     () =>
       setHistoryState({
@@ -230,15 +268,31 @@ export default function ArxDraw() {
     }
   }, [sync]);
   const apply = useCallback(
-    (next: Project, fit = false) => {
+    (next: Project, fit = false, keepSelection = false) => {
       applying.current = true;
+      if (next.activeDiagramId !== ref.current.activeDiagramId) {
+        setEditClass(null);
+        setRel(null);
+        setPlacement(null);
+        setPracticePlacement(null);
+        setPaletteKind(
+          next.diagrams.find((d) => d.id === next.activeDiagramId)?.kind ||
+            'class',
+        );
+        nativeConnector.current = null;
+      }
       ref.current = next;
       setProject(next);
       lastSignature.current = '';
       const d = next.diagrams.find((d) => d.id === next.activeDiagramId)!;
       api.current?.updateScene({
         elements: d.elements as ExcalidrawElement[],
-        appState: { ...canvasViewport(d), selectedElementIds: {} },
+        appState: {
+          ...canvasViewport(d),
+          selectedElementIds: keepSelection
+            ? api.current?.getAppState().selectedElementIds || {}
+            : {},
+        },
         captureUpdate: CaptureUpdateAction.NEVER,
       });
       api.current?.addFiles(Object.values(next.files) as BinaryFileData[]);
@@ -336,6 +390,7 @@ export default function ArxDraw() {
         setEditClass(null);
         setRel(null);
         setPlacement(null);
+        setPracticePlacement(null);
       }
       const signature =
         elements
@@ -362,9 +417,17 @@ export default function ArxDraw() {
       };
       let modelChanged = false;
       if (!state.editingTextElement) {
+        const reconciled = reconcileDuplicatedClasses(
+          next,
+          next.activeDiagramId,
+        );
+        if (reconciled !== next) {
+          next = reconciled;
+          modelChanged = true;
+        }
         for (const e of elements) {
           const data = e.customData;
-          if (data?.relationshipId && e.isDeleted) {
+          if (data?.relationshipId && e.type === 'arrow' && e.isDeleted) {
             const d = next.diagrams.find((d) => d.id === next.activeDiagramId)!;
             if (d.relationshipIds.includes(data.relationshipId)) {
               next = {
@@ -381,6 +444,50 @@ export default function ArxDraw() {
                 ),
               };
               modelChanged = true;
+            }
+          }
+          if (e.type === 'text') {
+            const container = e.containerId
+              ? elements.find((item) => item.id === e.containerId)
+              : undefined;
+            const relationshipId =
+              data?.relationshipId || container?.customData?.relationshipId;
+            const field =
+              data?.role === 'sourceMultiplicity' ||
+              data?.role === 'targetMultiplicity'
+                ? data.role
+                : container?.customData?.relationshipId
+                  ? 'label'
+                  : null;
+            if (
+              relationshipId &&
+              field &&
+              !elements.some(
+                (item) =>
+                  item.type === 'arrow' &&
+                  item.isDeleted &&
+                  item.customData?.relationshipId === relationshipId,
+              )
+            ) {
+              const current = next.relationships.find(
+                (r) => r.id === relationshipId,
+              );
+              if (
+                current &&
+                current[
+                  field as 'label' | 'sourceMultiplicity' | 'targetMultiplicity'
+                ] !== (e.isDeleted ? '' : e.text.trim())
+              ) {
+                next = {
+                  ...next,
+                  relationships: next.relationships.map((r) =>
+                    r.id === relationshipId
+                      ? { ...r, [field]: e.isDeleted ? '' : e.text.trim() }
+                      : r,
+                  ),
+                };
+                modelChanged = true;
+              }
             }
           }
           if (!data?.modelId) continue;
@@ -429,8 +536,167 @@ export default function ArxDraw() {
   function switchDiagram(id: string) {
     if (id === ref.current.activeDiagramId) return;
     flushHistory();
+    setPaletteKind(
+      ref.current.diagrams.find((d) => d.id === id)?.kind || 'class',
+    );
+    setPracticePlacement(null);
+    setPlacement(null);
     const next = renderProject({ ...ref.current, activeDiagramId: id });
     apply(next, !next.diagrams.find((d) => d.id === id)?.viewport);
+  }
+  function diagramWithContent(
+    p: Project,
+    kind: DiagramKind,
+    name: string,
+    example: boolean,
+  ): Project {
+    const id = uid();
+    const label =
+      name ||
+      (kind === 'class'
+        ? 'Class diagram'
+        : diagramKinds.find((item) => item.id === kind)?.label || 'Diagram');
+    if (kind === 'class' && example) {
+      const seed = createProject();
+      const classMap = new Map(seed.classes.map((c) => [c.id, uid()]));
+      const relationshipMap = new Map(
+        seed.relationships.map((r) => [r.id, uid()]),
+      );
+      const names = new Set(p.classes.map((c) => c.name));
+      const classes = seed.classes.map((c) => {
+        let name = c.name,
+          index = 2;
+        while (names.has(name)) name = `${c.name}${index++}`;
+        names.add(name);
+        return { ...c, id: classMap.get(c.id)!, name };
+      });
+      const relationships = seed.relationships.map((r) => ({
+        ...r,
+        id: relationshipMap.get(r.id)!,
+        from: classMap.get(r.from)!,
+        to: classMap.get(r.to)!,
+      }));
+      return {
+        ...p,
+        classes: [...p.classes, ...classes],
+        relationships: [...p.relationships, ...relationships],
+        activeDiagramId: id,
+        diagrams: [
+          ...p.diagrams,
+          {
+            id,
+            kind,
+            name: label,
+            classIds: classes.map((c) => c.id),
+            relationshipIds: relationships.map((r) => r.id),
+            elements: [],
+          },
+        ],
+      };
+    }
+    const elements =
+      example && kind !== 'class'
+        ? (convertToExcalidrawElements(
+            exampleSkeletons(kind) as ExcalidrawElementSkeleton[],
+            { regenerateIds: false },
+          ) as unknown as Diagram['elements'])
+        : [];
+    return {
+      ...p,
+      activeDiagramId: id,
+      diagrams: [
+        ...p.diagrams,
+        { id, kind, name: label, classIds: [], relationshipIds: [], elements },
+      ],
+    };
+  }
+  function createDiagram(kind: DiagramKind, name: string, example: boolean) {
+    if (ref.current.diagrams.length >= 100) {
+      flash('This project has reached 100 diagrams. Start a new project.');
+      return;
+    }
+    commit(diagramWithContent(ref.current, kind, name, example), example);
+    setPaletteKind(kind);
+  }
+  function addPracticeExamples() {
+    let next = ref.current;
+    if (next.diagrams.length + diagramKinds.length + 1 > 100) {
+      flash('Start a new project to add all examples.');
+      return;
+    }
+    next = diagramWithContent(next, 'class', 'Class · Online shop', true);
+    const first = next.activeDiagramId;
+    for (const kind of diagramKinds)
+      next = diagramWithContent(
+        next,
+        kind.id,
+        `${kind.label} · ${exampleTitle(kind.id)}`,
+        true,
+      );
+    commit({ ...next, activeDiagramId: first }, true);
+    setPaletteKind('class');
+    openUml('diagrams');
+  }
+  function selectPracticeTool(id: string) {
+    setPlacement(null);
+    if (isPracticeConnector(id)) {
+      const arrow = symbolSkeletons(id, 0, 0).find(
+        (element) => element.type === 'arrow',
+      )!;
+      nativeConnector.current = arrow.label || {};
+      setPracticePlacement(null);
+      api.current?.updateScene({
+        appState: {
+          currentItemStartArrowhead: (arrow.startArrowhead ||
+            null) as AppState['currentItemStartArrowhead'],
+          currentItemEndArrowhead: (arrow.endArrowhead ||
+            null) as AppState['currentItemEndArrowhead'],
+          currentItemStrokeStyle: (arrow.strokeStyle ||
+            'solid') as AppState['currentItemStrokeStyle'],
+          currentItemRoughness: 0,
+        },
+        captureUpdate: CaptureUpdateAction.NEVER,
+      });
+      api.current?.setActiveTool({ type: 'arrow' });
+      setTool('arrow');
+      setPanel(false);
+    } else {
+      nativeConnector.current = null;
+      setPracticePlacement(id);
+      setTool('custom');
+      api.current?.setActiveTool({ type: 'custom', customType: `uml-${id}` });
+    }
+  }
+  function addPracticeSymbol(id: string, position: { x: number; y: number }) {
+    const added = convertToExcalidrawElements(
+      symbolSkeletons(
+        id,
+        position.x,
+        position.y,
+      ) as ExcalidrawElementSkeleton[],
+      { regenerateIds: false },
+    );
+    const p = ref.current;
+    commit({
+      ...p,
+      diagrams: p.diagrams.map((d) =>
+        d.id === p.activeDiagramId
+          ? { ...d, elements: [...d.elements, ...added] as Diagram['elements'] }
+          : d,
+      ),
+    });
+    setPracticePlacement(null);
+    api.current?.setActiveTool({ type: 'selection' });
+    requestAnimationFrame(() =>
+      api.current?.updateScene({
+        appState: {
+          selectedElementIds: Object.fromEntries(
+            added.map((e) => [e.id, true]),
+          ),
+        },
+        captureUpdate: CaptureUpdateAction.NEVER,
+      }),
+    );
   }
   function saveFile() {
     flushHistory();
@@ -548,8 +814,8 @@ export default function ArxDraw() {
   function newRelationship() {
     const p = ref.current;
     const d = p.diagrams.find((d) => d.id === p.activeDiagramId)!;
-    if (d.classIds.length < 2) {
-      flash('Add at least two classes to this diagram first.');
+    if (d.classIds.length < 1) {
+      flash('Add a class to this diagram first.');
       return;
     }
     setPlacement(null);
@@ -560,7 +826,7 @@ export default function ArxDraw() {
     setRel({
       id: uid(),
       from: d.classIds[0],
-      to: d.classIds[1],
+      to: d.classIds[1] || d.classIds[0],
       kind: 'association',
       label: '',
       sourceMultiplicity: '',
@@ -624,6 +890,7 @@ export default function ArxDraw() {
     setEditClass(null);
     setRel(null);
     setPlacement(null);
+    setPracticePlacement(null);
     api.current?.updateScene({
       appState: { selectedElementIds: {} },
       captureUpdate: CaptureUpdateAction.NEVER,
@@ -645,6 +912,7 @@ export default function ArxDraw() {
   function place(kind: Classifier['kind']) {
     setTool('custom');
     setPlacement(kind);
+    setPracticePlacement(null);
     setEditClass(null);
     setRel(null);
     api.current?.setActiveTool({ type: 'custom', customType: `uml-${kind}` });
@@ -674,40 +942,75 @@ export default function ArxDraw() {
             <TabsTrigger value="diagrams">Diagrams</TabsTrigger>
           </TabsList>
           <TabsContent value="tools">
-            <fieldset>
-              <legend>Classifier</legend>
-              <div className="arx-tool-list">
-                <button
-                  className={placement === 'class' ? 'active' : ''}
-                  onClick={() => place('class')}
-                >
-                  <Box size={16} />
-                  Class
-                </button>
-                <button
-                  className={placement === 'interface' ? 'active' : ''}
-                  onClick={() => place('interface')}
-                >
-                  <Braces size={16} />
-                  Interface
-                </button>
-                <button
-                  className={placement === 'abstract' ? 'active' : ''}
-                  onClick={() => place('abstract')}
-                >
-                  <Box size={16} />
-                  Abstract class
-                </button>
+            <Choice
+              label="Diagram tools"
+              value={paletteKind}
+              onChange={(value) => {
+                setPaletteKind(value as DiagramKind);
+                setPlacement(null);
+                setPracticePlacement(null);
+              }}
+              options={[
+                { value: 'class', label: 'Class' },
+                ...diagramKinds.map((kind) => ({
+                  value: kind.id,
+                  label: kind.label,
+                })),
+              ]}
+            />
+            {paletteKind === 'class' ? (
+              <>
+                <fieldset>
+                  <legend>Classifier</legend>
+                  <div className="arx-tool-list">
+                    <button
+                      className={placement === 'class' ? 'active' : ''}
+                      onClick={() => place('class')}
+                    >
+                      <Box size={16} />
+                      Class
+                    </button>
+                    <button
+                      className={placement === 'interface' ? 'active' : ''}
+                      onClick={() => place('interface')}
+                    >
+                      <Braces size={16} />
+                      Interface
+                    </button>
+                    <button
+                      className={placement === 'abstract' ? 'active' : ''}
+                      onClick={() => place('abstract')}
+                    >
+                      <Box size={16} />
+                      Abstract class
+                    </button>
+                  </div>
+                </fieldset>
+                <fieldset>
+                  <legend>Connection</legend>
+                  <button className="arx-row" onClick={newRelationship}>
+                    <GitBranch size={16} />
+                    Relationship
+                  </button>
+                </fieldset>
+              </>
+            ) : (
+              <div className="arx-tool-list arx-practice-tools">
+                {practiceTools(paletteKind as PracticeDiagramKind).map(
+                  (item) => (
+                    <button
+                      key={item.id}
+                      className={practicePlacement === item.id ? 'active' : ''}
+                      onClick={() => selectPracticeTool(item.id)}
+                    >
+                      <Plus size={14} />
+                      {item.label}
+                    </button>
+                  ),
+                )}
               </div>
-            </fieldset>
-            <fieldset>
-              <legend>Connection</legend>
-              <button className="arx-row" onClick={newRelationship}>
-                <GitBranch size={16} />
-                Relationship
-              </button>
-            </fieldset>
-            {placement && (
+            )}
+            {(placement || practicePlacement) && (
               <p className="arx-hint">Click on the canvas to place.</p>
             )}
           </TabsContent>
@@ -803,6 +1106,8 @@ export default function ArxDraw() {
               className="arx-row"
               onClick={() => {
                 setText('');
+                setNewDiagramKind(paletteKind);
+                setNewDiagramContent('blank');
                 setDialog('diagram');
               }}
             >
@@ -852,28 +1157,22 @@ export default function ArxDraw() {
               { value: 'abstract', label: 'Abstract class' },
             ]}
           />
-          <label className="field" htmlFor="class-attributes">
-            <span>Attributes</span>
-            <Textarea
-              id="class-attributes"
-              rows={4}
-              value={editClass.attributes}
-              onChange={(e) =>
-                setEditClass({ ...editClass, attributes: e.target.value })
-              }
-            />
-          </label>
-          <label className="field" htmlFor="class-operations">
-            <span>Operations</span>
-            <Textarea
-              id="class-operations"
-              rows={4}
-              value={editClass.operations}
-              onChange={(e) =>
-                setEditClass({ ...editClass, operations: e.target.value })
-              }
-            />
-          </label>
+          <MemberEditor
+            key={`${editClass.id}-attributes`}
+            kind="attributes"
+            value={editClass.attributes}
+            onChange={(attributes) =>
+              setEditClass({ ...editClass, attributes })
+            }
+          />
+          <MemberEditor
+            key={`${editClass.id}-operations`}
+            kind="operations"
+            value={editClass.operations}
+            onChange={(operations) =>
+              setEditClass({ ...editClass, operations })
+            }
+          />
           <label className="field" htmlFor="class-description">
             <span>Description</span>
             <Textarea
@@ -1041,7 +1340,10 @@ export default function ArxDraw() {
           e.stopPropagation();
           saveFile();
         }
-        if (e.key === 'Escape' && panel) closeUml();
+        if (e.key === 'Escape') {
+          nativeConnector.current = null;
+          if (panel) closeUml();
+        }
       }}
     >
       <Excalidraw
@@ -1070,9 +1372,71 @@ export default function ArxDraw() {
         theme={dark ? 'dark' : 'light'}
         name={`${project.name} — ${active.name}`}
         onPointerDown={(activeTool, state) => {
+          if (activeTool.type !== 'arrow') nativeConnector.current = null;
           if (activeTool.type === 'custom' && placement) {
             addClass(placement, state.origin);
+          } else if (activeTool.type === 'custom' && practicePlacement) {
+            addPracticeSymbol(practicePlacement, state.origin);
           }
+        }}
+        onPointerUp={(activeTool, state) => {
+          if (activeTool.type === 'arrow' && nativeConnector.current) {
+            const label = nativeConnector.current;
+            nativeConnector.current = null;
+            if (label.text)
+              requestAnimationFrame(() => {
+                const p = ref.current;
+                const d = p.diagrams.find(
+                  (item) => item.id === p.activeDiagramId,
+                )!;
+                const arrow = api.current
+                  ?.getSceneElements()
+                  .find(
+                    (item) =>
+                      item.type === 'arrow' &&
+                      !state.originalElements.has(item.id),
+                  );
+                if (!arrow) return;
+                const decorated = convertToExcalidrawElements(
+                  [{ ...arrow, label }] as ExcalidrawElementSkeleton[],
+                  { regenerateIds: false },
+                );
+                const ids = new Set(decorated.map((item) => item.id));
+                apply(
+                  {
+                    ...p,
+                    diagrams: p.diagrams.map((item) =>
+                      item.id === d.id
+                        ? {
+                            ...item,
+                            elements: [
+                              ...d.elements.filter(
+                                (element) => !ids.has(element.id),
+                              ),
+                              ...decorated,
+                            ] as Diagram['elements'],
+                          }
+                        : item,
+                    ),
+                  },
+                  false,
+                  true,
+                );
+              });
+          }
+          if (
+            activeTool.type !== 'selection' ||
+            (!state.drag.hasOccurred && !state.resize.isResizing)
+          )
+            return;
+          if (
+            !state.hit.element?.customData?.arxdraw &&
+            !state.hit.allHitElements.some((e) => e.customData?.arxdraw)
+          )
+            return;
+          requestAnimationFrame(() =>
+            apply(renderProject(ref.current), false, true),
+          );
         }}
         UIOptions={{
           canvasActions: {
@@ -1124,6 +1488,24 @@ export default function ArxDraw() {
             }}
           >
             Rename project
+          </MainMenu.Item>
+          <MainMenu.Separator />
+          <MainMenu.Item
+            icon={<Network size={16} />}
+            onSelect={addPracticeExamples}
+          >
+            Practice examples
+          </MainMenu.Item>
+          <MainMenu.Item
+            icon={<Braces size={16} />}
+            onSelect={() => setCodeOpen(true)}
+          >
+            Class diagram code
+          </MainMenu.Item>
+          <MainMenu.Item
+            onSelect={() => setCheckResults(projectIssues(ref.current))}
+          >
+            Check class model
           </MainMenu.Item>
           <MainMenu.Separator />
           <MainMenu.DefaultItems.CommandPalette />
@@ -1278,24 +1660,14 @@ export default function ArxDraw() {
             className="arx-form"
             onSubmit={(e) => {
               e.preventDefault();
-              if (!text.trim()) return;
+              if (!text.trim() && dialog !== 'diagram') return;
               const p = ref.current;
               if (dialog === 'diagram') {
-                const id = uid();
-                commit({
-                  ...p,
-                  activeDiagramId: id,
-                  diagrams: [
-                    ...p.diagrams,
-                    {
-                      id,
-                      name: text.trim(),
-                      classIds: [],
-                      relationshipIds: [],
-                      elements: [],
-                    },
-                  ],
-                });
+                createDiagram(
+                  newDiagramKind,
+                  text.trim(),
+                  newDiagramContent === 'example',
+                );
               } else
                 commit(
                   renameTarget === 'project'
@@ -1313,11 +1685,37 @@ export default function ArxDraw() {
               openUml('diagrams');
             }}
           >
+            {dialog === 'diagram' && (
+              <>
+                <Choice
+                  label="Type"
+                  value={newDiagramKind}
+                  onChange={(value) => setNewDiagramKind(value as DiagramKind)}
+                  options={[
+                    { value: 'class', label: 'Class' },
+                    ...diagramKinds.map((kind) => ({
+                      value: kind.id,
+                      label: kind.label,
+                    })),
+                  ]}
+                />
+                <Choice
+                  label="Start with"
+                  value={newDiagramContent}
+                  onChange={setNewDiagramContent}
+                  options={[
+                    { value: 'blank', label: 'Blank diagram' },
+                    { value: 'example', label: 'Example diagram' },
+                  ]}
+                />
+              </>
+            )}
             <label className="field" htmlFor="diagram-name">
               <span>Name</span>
               <Input
                 id="diagram-name"
-                required
+                required={dialog !== 'diagram'}
+                placeholder="Untitled diagram"
                 maxLength={100}
                 value={text}
                 onChange={(e) => setText(e.target.value)}
@@ -1327,6 +1725,50 @@ export default function ArxDraw() {
               {dialog === 'diagram' ? 'Create' : 'Save'}
             </Button>
           </form>
+        </DialogContent>
+      </Dialog>
+      <CodeTools
+        project={project}
+        open={codeOpen}
+        onOpenChange={setCodeOpen}
+        onImport={(imported) => {
+          const p = ref.current;
+          commit(
+            {
+              ...p,
+              classes: [...p.classes, ...imported.classes],
+              relationships: [...p.relationships, ...imported.relationships],
+              diagrams: [...p.diagrams, ...imported.diagrams],
+              activeDiagramId: imported.activeDiagramId,
+            },
+            true,
+          );
+          setPaletteKind('class');
+          openUml('tools');
+        }}
+      />
+      <Dialog
+        open={checkResults !== null}
+        onOpenChange={(open) => {
+          if (!open) setCheckResults(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Class model</DialogTitle>
+            <DialogDescription>
+              Name, inheritance, and interface checks.
+            </DialogDescription>
+          </DialogHeader>
+          {checkResults?.length ? (
+            <ul className="arx-check-list">
+              {checkResults.map((issue, index) => (
+                <li key={index}>{issue}</li>
+              ))}
+            </ul>
+          ) : (
+            <p>No issues found.</p>
+          )}
         </DialogContent>
       </Dialog>
     </div>

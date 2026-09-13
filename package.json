@@ -9,9 +9,9 @@
     "dev": "vinext dev",
     "build": "vinext build",
     "start": "wrangler dev --config dist/server/wrangler.json",
-    "lint": "oxlint app lib tests components/arxdraw.tsx components/native-slots.tsx",
+    "lint": "oxlint app lib tests components/arxdraw.tsx components/native-slots.tsx components/code-tools.tsx components/member-editor.tsx",
     "format": "oxfmt",
-    "test": "node --experimental-strip-types --test tests/model.test.ts",
+    "test": "node --experimental-strip-types --test tests/*.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

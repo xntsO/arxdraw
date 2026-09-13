@@ -1,33 +1,45 @@
 # ArxDraw
 
-A web UML workspace built around the real Excalidraw React editor. This is the first milestone, not full ArgoUML parity.
+A UML drawing workspace using the Excalidraw editor.
 
-## Included
+[Open ArxDraw](https://arxdraw.fhas.sa)
 
-- Excalidraw canvas, drawing tools, styling, pan/zoom, images, and PNG/SVG export.
-- Shared class, abstract-class, and interface model with names, attributes, operations, and descriptions.
-- Association, aggregation, composition, inheritance, dependency, and realization relationships.
-- Multiple class diagrams with independent layouts referencing the same model.
-- Browser autosave and complete `.arxdraw` project import/export, including embedded images.
-- Project undo/redo and basic model checks.
+## Start practicing
 
-Choose UML in the Excalidraw toolbar. Select Class or Interface and click the canvas to place it. Select a UML object to edit its properties. The UML panel also provides Model and Diagrams tabs. Open/save, diagrams, and project naming are in the hamburger menu. Existing `.arxdraw` projects and browser autosaves remain compatible.
+Open the main menu and choose **Practice examples** to add editable examples for all ten diagram types. Use **UML → Diagrams** to switch between them.
+
+To start from scratch, choose **New diagram**, select a type, and choose **Blank diagram** or **Example diagram**. In **UML → Tools**, select the diagram toolset and a symbol, then click the canvas. Connector tools use native click-and-drag arrows with the matching UML notation. Double-click labels to edit them.
+
+## Working features
+
+- Class, use-case, sequence, activity, state, component, deployment, object, package, and communication diagram tools and examples.
+- Shared class/interface/abstract-class model with attributes, operations, visibility, types, and parameters. Both structured fields and raw signatures are editable.
+- Association, aggregation, composition, inheritance, dependency, and realization. Endpoint multiplicities, parallel relationships, self-associations, and editable routing.
+- Independent diagram layouts, add/delete diagrams, browser autosave, full `.arxdraw` save/open, project undo/redo, and native images/drawing tools.
+- Native duplicated class groups become independent model classes.
+- PNG/SVG export, PlantUML class-diagram import/export, Java source skeleton generation, and basic class-model checks.
+
+Class diagrams use the shared semantic model. The other diagram types use native editable symbols and connectors; they are saved in each diagram's canvas. Removing a class from a diagram preserves its shared model object. Deleting it from the Model removes it from all diagrams. Deleting the final diagram opens a new blank canvas.
 
 ## Development
 
 ```sh
 npm install
 npm run dev
-npm run build
+npm run lint
+npm run typecheck
 npm test
+npm run build
 ```
+
+Tests cover model serialization and edits, UML notation and template bindings, duplication, member editing, PlantUML round trips, and Java output. Java compilation checks run when `javac` is available.
 
 ## Architecture
 
-`lib/model.ts` owns the versioned UML model and validates project files. `lib/scene.ts` projects each diagram into grouped Excalidraw elements, connecting representations through `customData.modelId`. `components/arxdraw.tsx` coordinates project history, persistence, canvas editing, and the model inspector.
+`lib/model.ts` owns project data and import validation. `lib/diagram.ts` renders shared classes and relationships. `lib/practice.ts` generates native symbols and example diagrams. `lib/scene.ts` converts skeletons into Excalidraw elements. `lib/scene-model.ts` reconciles native class duplication. `lib/interchange.ts` handles PlantUML and Java. The main editor coordinates history, autosave, and native UI extensions.
 
-## Current limits and next milestones
+## Limits
 
-Class diagrams are supported; the remaining UML diagram families, XMI/ArgoUML project interchange, profiles, full OCL validation, ArgoUML critics, code generation/reverse engineering, and real-time collaboration are not implemented. Basic attribute and operation signatures are stored as text. Project storage is local to the browser unless downloaded. Model redraws rebuild class compartments and UML relationship routes; freehand elements are preserved.
+ArxDraw is not full ArgoUML parity. Non-class diagrams do not yet have a shared semantic model or UML validation. PlantUML import supports class-diagram syntax and reports unsupported constructs. Java generation creates declarations and method stubs, not application behavior. XMI/ArgoUML project interchange, OCL, profiles, advanced design critics, source-code reverse engineering, and collaboration are not implemented. Save project files to move work between browsers.
 
-ArgoUML is the feature reference. No ArgoUML Java source has been incorporated. Excalidraw remains an upstream npm dependency under its MIT license; this app does not claim affiliation with either project.
+ArgoUML is the feature reference; no ArgoUML Java source has been incorporated. Excalidraw is an upstream npm dependency under its MIT license. This app does not claim affiliation with either project.
