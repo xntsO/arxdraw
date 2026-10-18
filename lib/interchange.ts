@@ -1,5 +1,6 @@
 import { createBlankProject, uid } from './model.ts';
 import type { Classifier, Project, Relationship } from './model.ts';
+export { exportClassXmi, importClassXmi, xmiSubsetDescription } from './xmi.ts';
 
 // Supported PlantUML subset: class/interface/abstract class declarations, member
 // bodies (or Alias : member), six UML links, multiplicities, title and one-line
@@ -72,8 +73,12 @@ export function exportClassPlantUml(
     const from = aliases.get(r.from),
       to = aliases.get(r.to);
     if (!from || !to) continue;
+    if (r.navigable && r.kind !== 'association')
+      throw new Error(
+        'PlantUML navigability is supported only on associations.',
+      );
     output.push(
-      `${from}${r.sourceMultiplicity ? ` ${quoted(r.sourceMultiplicity)}` : ''} ${links[r.kind]}${r.targetMultiplicity ? ` ${quoted(r.targetMultiplicity)}` : ''} ${to}${r.label ? ` : ${textEncode(r.label)}` : ''}`,
+      `${from}${r.sourceMultiplicity ? ` ${quoted(r.sourceMultiplicity)}` : ''} ${r.kind === 'association' && r.navigable === 'target' ? '-->' : links[r.kind]}${r.targetMultiplicity ? ` ${quoted(r.targetMultiplicity)}` : ''} ${to}${r.label ? ` : ${textEncode(r.label)}` : ''}`,
     );
   }
   return [...output, '@enduml', ''].join('\n');
@@ -94,6 +99,7 @@ export function importClassPlantUml(source: string): Project {
     sourceMultiplicity: string;
     targetMultiplicity: string;
     line: number;
+    navigable?: 'target';
   }[] = [];
   const notes: { alias: string; text: string; line: number }[] = [];
   const token = '(?:"(?:[^"\\\\]|\\\\.)*"|[\\p{L}_$][\\p{L}\\p{N}_$.]*)';
@@ -217,6 +223,9 @@ export function importClassPlantUml(source: string): Project {
         from,
         to,
         kind,
+        ...(arrow === '-->' || arrow === '<--'
+          ? ({ navigable: 'target' } satisfies Pick<Relationship, 'navigable'>)
+          : {}),
         sourceMultiplicity,
         targetMultiplicity,
         label: textDecode(rel[6] ?? ''),
@@ -261,6 +270,7 @@ export function importClassPlantUml(source: string): Project {
       label: r.label,
       sourceMultiplicity: r.sourceMultiplicity,
       targetMultiplicity: r.targetMultiplicity,
+      ...(r.navigable ? { navigable: r.navigable } : {}),
     });
   }
   for (const note of notes) {

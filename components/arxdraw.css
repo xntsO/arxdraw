@@ -198,8 +198,8 @@
   font-size: 13px;
 }
 .arx-check-list {
-  list-style: disc;
-  padding-left: 20px;
+  list-style: none;
+  padding: 0;
 }
 .arx-form .field,
 .arx-properties .field {
@@ -316,4 +316,418 @@
 .excalidraw .arx-panel-tabs button[data-active] {
   background: var(--color-primary-light);
   color: var(--color-primary-darker);
+}
+
+/* Workflow additions: explorer, status, notices, findings. */
+.arx-properties button:focus-visible,
+.arx-top-right button:focus-visible,
+.arx-notice button:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+}
+.excalidraw .arx-properties .arx-search {
+  margin-bottom: 14px;
+  height: 30px;
+  padding: 4px 8px;
+}
+.arx-row-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+  line-height: 1.3;
+}
+.arx-row-text > span,
+.arx-row-text > small,
+.arx-heading-text > span,
+.arx-heading-text > small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.arx-row-text small,
+.arx-heading-text small {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--text-secondary-color, #787787);
+}
+.arx-heading-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+output.arx-hint,
+.arx-dirty {
+  display: block;
+}
+.arx-dirty {
+  font-size: 12px;
+  color: var(--color-warning-dark, #b45309);
+  margin: -6px 0 0;
+}
+.arx-form-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.arx-form-actions .arx-row {
+  width: auto;
+}
+.arx-properties [data-slot='button']:disabled {
+  opacity: 0.55;
+}
+.arx-properties kbd {
+  font: inherit;
+  font-size: 11px;
+  padding: 0 3px;
+  border: 1px solid var(--default-border-color);
+  border-radius: 3px;
+}
+.arx-style-bar {
+  padding: 4px;
+}
+.arx-top-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  pointer-events: all;
+}
+.arx-diagram-switch,
+.arx-save-state {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 10px;
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--color-on-surface);
+  background: var(--island-bg-color);
+  box-shadow: var(--shadow-island);
+  white-space: nowrap;
+}
+.arx-diagram-switch {
+  max-width: 240px;
+  cursor: pointer;
+}
+.arx-diagram-switch:hover {
+  background: var(--button-hover-bg);
+}
+.arx-diagram-switch > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.arx-diagram-switch small {
+  color: var(--text-secondary-color, #787787);
+  font-size: 11px;
+}
+.arx-save-state {
+  box-shadow: none;
+  background: transparent;
+  padding: 0 4px;
+  color: var(--text-secondary-color, #787787);
+  font-size: 12px;
+}
+.arx-save-state[data-state='error'] {
+  color: var(--color-danger);
+  cursor: pointer;
+  background: var(--island-bg-color);
+  box-shadow: var(--shadow-island);
+  padding: 0 10px;
+}
+.arx-save-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  animation: arx-pulse 1s ease-in-out infinite;
+}
+@keyframes arx-pulse {
+  50% {
+    opacity: 0.3;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .arx-save-dot {
+    animation: none;
+  }
+}
+.arx-notice[data-tone='error'] {
+  border-color: var(--destructive);
+  color: var(--destructive);
+}
+.arx-notice[data-tone='error'] > span {
+  color: var(--popover-foreground);
+}
+.arx-notice-action {
+  font-weight: 600;
+  color: var(--primary);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.arx-check-dialog {
+  max-height: calc(100dvh - 48px);
+  overflow-y: auto;
+}
+.arx-check-list li {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 10px;
+  align-items: start;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+.arx-check-list li small {
+  display: block;
+  color: var(--muted-foreground);
+  margin-top: 2px;
+}
+.arx-severity {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--muted);
+}
+[data-severity='error'] .arx-severity {
+  background: color-mix(in oklab, var(--destructive) 15%, transparent);
+  color: var(--destructive);
+}
+.arx-segmented {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  font-size: 14px;
+}
+.arx-segmented label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.arx-file-pick {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 14px;
+}
+.arx-code-error {
+  font-size: 14px;
+  color: var(--destructive);
+  white-space: pre-wrap;
+  border: 1px solid var(--destructive);
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+@media (max-width: 730px) {
+  .arx-diagram-switch {
+    max-width: 120px;
+  }
+}
+
+/* COMP371 manual browser shares the editor's neutral controls and theme. */
+.arx-labs-dialog[data-slot='dialog-content'] {
+  width: min(960px, calc(100vw - 32px));
+  max-width: none;
+  height: min(760px, calc(100dvh - 48px));
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 16px;
+  padding: 24px;
+}
+.arx-labs-dialog [data-slot='dialog-header'] {
+  padding-right: 24px;
+}
+.arx-labs-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.arx-labs-filters {
+  display: flex;
+  gap: 12px;
+}
+.arx-labs-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+.arx-labs-search > svg {
+  color: var(--muted-foreground);
+  flex: none;
+}
+.arx-labs-kind select {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  min-height: 36px;
+  padding: 4px 8px;
+  background: var(--popover);
+  color: var(--popover-foreground);
+  font: inherit;
+  max-width: 210px;
+}
+.arx-labs-body {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  min-height: 0;
+  gap: 24px;
+}
+.arx-labs-list {
+  overflow-y: auto;
+  padding: 0 12px 8px 0;
+  border-right: 1px solid var(--border);
+}
+.arx-labs-count {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  padding: 0 10px 8px;
+}
+.arx-labs-list button {
+  display: flex;
+  flex-direction: column;
+  align-items: start;
+  text-align: left;
+  width: 100%;
+  padding: 10px;
+  gap: 3px;
+  border-radius: 8px;
+  margin-bottom: 4px;
+}
+.arx-labs-list button:hover {
+  background: var(--muted);
+}
+.arx-labs-list button[aria-current] {
+  background: var(--accent);
+  box-shadow: inset 3px 0 var(--primary);
+}
+.arx-labs-list button:focus-visible,
+.arx-labs-kind select:focus-visible,
+.arx-lab-checklist input:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+.arx-lab-number {
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+.arx-labs-list strong {
+  font-weight: 500;
+  font-size: 14px;
+}
+.arx-labs-list small {
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+.arx-labs-empty {
+  padding: 12px;
+  color: var(--muted-foreground);
+}
+.arx-lab-detail {
+  overflow-y: auto;
+  padding: 0 4px 12px 0;
+}
+.arx-lab-meta {
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+.arx-lab-detail h2 {
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.25;
+  margin: 8px 0 16px;
+}
+.arx-lab-objectives {
+  padding-left: 20px;
+  list-style: disc;
+  line-height: 1.6;
+  margin-bottom: 20px;
+}
+.arx-lab-objectives li + li {
+  margin-top: 8px;
+}
+.arx-lab-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.arx-lab-note {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--muted-foreground);
+  margin: 8px 0;
+}
+.arx-lab-checklist {
+  border-top: 1px solid var(--border);
+  padding-top: 16px;
+  margin-top: 24px;
+}
+.arx-lab-checklist legend {
+  font-weight: 600;
+  padding-right: 8px;
+}
+.arx-lab-checklist > p {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+.arx-lab-checklist label {
+  display: flex;
+  align-items: start;
+  gap: 10px;
+  min-height: 44px;
+  padding: 10px 0;
+  line-height: 1.5;
+  cursor: pointer;
+}
+.arx-lab-checklist input {
+  margin-top: 3px;
+  width: 16px;
+  height: 16px;
+  accent-color: var(--primary);
+  flex: none;
+}
+.arx-navigable {
+  display: flex;
+  align-items: start;
+  gap: 8px;
+  font-size: 12px;
+}
+.arx-navigable input {
+  margin-top: 2px;
+}
+.arx-model-row button:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+@media (max-width: 730px) {
+  .arx-labs-dialog[data-slot='dialog-content'] {
+    width: calc(100vw - 16px);
+    height: calc(100dvh - 24px);
+    padding: 16px;
+    gap: 12px;
+  }
+  .arx-labs-body {
+    grid-template-columns: 1fr;
+    grid-template-rows: 150px minmax(0, 1fr);
+    gap: 16px;
+  }
+  .arx-labs-list {
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    padding-right: 4px;
+  }
+  .arx-labs-filters {
+    flex-direction: column;
+    gap: 8px;
+  }
+  .arx-labs-kind select {
+    width: 100%;
+    max-width: none;
+  }
+  .arx-lab-detail h2 {
+    font-size: 20px;
+  }
 }

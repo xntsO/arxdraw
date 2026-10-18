@@ -23,6 +23,7 @@ void test('all diagram kinds survive saving and loading, while legacy diagrams r
     'object',
     'package',
     'communication',
+    'data-flow',
   ];
   project.diagrams = kinds.map((kind) => ({
     id: kind,

@@ -335,7 +335,8 @@ export function diagramSkeletons(p: Project, d: Diagram): UmlSkeleton[] {
     const endArrowhead =
       r.kind === 'inheritance' || r.kind === 'realization'
         ? 'triangle_outline'
-        : r.kind === 'dependency'
+        : r.kind === 'dependency' ||
+            (r.kind === 'association' && r.navigable === 'target')
           ? 'arrow'
           : null;
     raw.push({
@@ -373,6 +374,7 @@ export function diagramSkeletons(p: Project, d: Diagram): UmlSkeleton[] {
         from: r.from,
         to: r.to,
         kind: r.kind,
+        ...(r.navigable ? { navigable: r.navigable } : {}),
         routePoints: relativePoints,
         manualRoute,
       },

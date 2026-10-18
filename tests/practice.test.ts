@@ -11,7 +11,7 @@ import {
 } from '../lib/practice.ts';
 
 void test('every practice kind has a complete editable palette and an example with valid bindings', () => {
-  assert.equal(diagramKinds.length, 9);
+  assert.equal(diagramKinds.length, 10);
   for (const { id } of diagramKinds) {
     assert.ok(exampleTitle(id));
     const symbols = practiceTools(id).flatMap((tool) =>
@@ -36,9 +36,12 @@ void test('every practice kind has a complete editable palette and an example wi
             Number.isFinite(element.height) &&
               (linear ? element.height >= 0 : element.height > 0),
           );
-        assert.equal(
-          element.customData,
-          undefined,
+        const customData = element.customData;
+        assert.ok(
+          !customData ||
+            typeof customData !== 'object' ||
+            !('arxdraw' in customData) ||
+            !customData.arxdraw,
           'native symbols must survive shared-model rerender',
         );
         if (element.start)
@@ -194,6 +197,6 @@ void test('native line bounds match their points for selection and resizing', ()
   const underline = symbolSkeletons('object', 0, 0).find(
     (element) => element.type === 'line',
   )!;
-  assert.equal(underline.width, 190);
+  assert.equal(underline.width, 192);
   assert.equal(underline.height, 0);
 });

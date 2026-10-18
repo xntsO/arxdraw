@@ -1,3 +1,13 @@
+import { projectDiagnostics } from './diagnostics.ts';
+import type { NativeUmlModel } from './native-model-types.ts';
+export type {
+  NativeUmlElement,
+  NativeUmlRelationship,
+  NativeElementKind,
+  NativeRelationshipKind,
+  NativeUmlModel,
+  NativeUmlMetadata,
+} from './native-model-types.ts';
 export type Classifier = {
   id: string;
   name: string;
@@ -22,6 +32,7 @@ export type Relationship = {
   label: string;
   sourceMultiplicity: string;
   targetMultiplicity: string;
+  navigable?: 'target';
 };
 export type SceneElement = {
   id: string;
@@ -53,6 +64,7 @@ export type DiagramKind =
   | 'deployment'
   | 'object'
   | 'package'
+  | 'data-flow'
   | 'communication';
 export type Diagram = {
   id: string;
@@ -60,6 +72,9 @@ export type Diagram = {
   kind?: DiagramKind;
   classIds: string[];
   relationshipIds: string[];
+  nativeElementIds?: string[];
+  nativeRelationshipIds?: string[];
+  labId?: string;
   elements: SceneElement[];
   viewport?: {
     scrollX: number;
@@ -77,6 +92,7 @@ export type Project = {
   diagrams: Diagram[];
   activeDiagramId: string;
   files: Record<string, unknown>;
+  nativeModel?: NativeUmlModel;
 };
 export const uid = () => crypto.randomUUID();
 export function createBlankProject(): Project {
@@ -235,144 +251,10 @@ export function removeClassifier(project: Project, id: string): Project {
     })),
   };
 }
-export function projectIssues(p: Project): string[] {
-  const issues: string[] = [];
-  const names = new Set<string>();
-  for (const c of p.classes) {
-    if (!c.name.trim()) issues.push('A classifier needs a name.');
-    else if (names.has(c.name.trim()))
-      issues.push(`Duplicate classifier name: ${c.name}.`);
-    names.add(c.name.trim());
-  }
-  for (const r of p.relationships)
-    if (
-      r.kind === 'realization' &&
-      p.classes.find((c) => c.id === r.to)?.kind !== 'interface'
-    )
-      issues.push('A realization should point to an interface.');
-  const parents = new Map<string, string[]>();
-  for (const r of p.relationships)
-    if (r.kind === 'inheritance')
-      parents.set(r.from, [...(parents.get(r.from) || []), r.to]);
-  const visited = new Set<string>(),
-    visiting = new Set<string>();
-  const visit = (id: string): boolean => {
-    if (visiting.has(id)) return true;
-    if (visited.has(id)) return false;
-    visiting.add(id);
-    if ((parents.get(id) || []).some(visit)) return true;
-    visiting.delete(id);
-    visited.add(id);
-    return false;
-  };
-  if (p.classes.some((c) => visit(c.id)))
-    issues.push('Inheritance contains a cycle.');
-  return issues;
-}
-export function parseProject(raw: string): Project {
-  if (raw.length > 40_000_000)
-    throw new Error('This project is too large (40 MB maximum).');
-  const p = JSON.parse(raw);
-  const fail = () => {
-    throw new Error('This is not a valid ArxDraw v1 project.');
-  };
-  if (
-    !p ||
-    p.format !== 'arxdraw' ||
-    p.version !== 1 ||
-    typeof p.name !== 'string' ||
-    !Array.isArray(p.classes) ||
-    !Array.isArray(p.relationships) ||
-    !Array.isArray(p.diagrams) ||
-    !p.diagrams.length ||
-    p.diagrams.length > 100 ||
-    p.classes.length > 2000
-  )
-    fail();
-  const str = (v: unknown) => typeof v === 'string';
-  const unique = (items: { id: string }[]) =>
-    new Set(items.map((x) => x.id)).size === items.length;
-  for (const c of p.classes)
-    if (
-      !c ||
-      ![c.id, c.name, c.attributes, c.operations, c.description].every(str) ||
-      !['class', 'interface', 'abstract'].includes(c.kind)
-    )
-      fail();
-  if (!unique(p.classes) || !unique(p.relationships) || !unique(p.diagrams))
-    fail();
-  const classIds = new Set(p.classes.map((c: Classifier) => c.id));
-  const relIds = new Set(p.relationships.map((r: Relationship) => r.id));
-  for (const r of p.relationships)
-    if (
-      !r ||
-      ![
-        r.id,
-        r.from,
-        r.to,
-        r.label,
-        r.sourceMultiplicity,
-        r.targetMultiplicity,
-      ].every(str) ||
-      !relationshipKinds.includes(r.kind) ||
-      !classIds.has(r.from) ||
-      !classIds.has(r.to)
-    )
-      fail();
-  for (const d of p.diagrams) {
-    if (
-      !d ||
-      !str(d.id) ||
-      !str(d.name) ||
-      (d.kind !== undefined &&
-        ![
-          'class',
-          'use-case',
-          'sequence',
-          'activity',
-          'state',
-          'component',
-          'deployment',
-          'object',
-          'package',
-          'communication',
-        ].includes(d.kind)) ||
-      !Array.isArray(d.classIds) ||
-      !d.classIds.every((id: string) => classIds.has(id)) ||
-      !Array.isArray(d.relationshipIds) ||
-      !d.relationshipIds.every((id: string) => relIds.has(id)) ||
-      !Array.isArray(d.elements) ||
-      d.elements.length > 20000
-    )
-      fail();
-    for (const e of d.elements)
-      if (
-        !e ||
-        !str(e.id) ||
-        !str(e.type) ||
-        !Number.isFinite(e.x) ||
-        !Number.isFinite(e.y) ||
-        !Number.isFinite(e.width) ||
-        !Number.isFinite(e.height)
-      )
-        fail();
-    if (
-      d.viewport &&
-      (!Number.isFinite(d.viewport.scrollX) ||
-        !Number.isFinite(d.viewport.scrollY) ||
-        !Number.isFinite(d.viewport.zoom?.value) ||
-        d.viewport.zoom.value <= 0 ||
-        d.viewport.zoom.value > 30 ||
-        !str(d.viewport.viewBackgroundColor))
-    )
-      fail();
-  }
-  if (
-    !p.diagrams.some((d: Diagram) => d.id === p.activeDiagramId) ||
-    !p.files ||
-    typeof p.files !== 'object' ||
-    Array.isArray(p.files)
-  )
-    fail();
-  return p as Project;
+export { parseProject } from './project-parse.ts';
+export { projectDiagnostics } from './diagnostics.ts';
+export type { ProjectDiagnostic } from './diagnostics.ts';
+export { duplicateDiagram, mergeProjects } from './project-operations.ts';
+export function projectIssues(project: Project): string[] {
+  return projectDiagnostics(project).map((diagnostic) => diagnostic.message);
 }

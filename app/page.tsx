@@ -10,10 +10,26 @@ export default function Home() {
   const [Editor, setEditor] = useState<ComponentType | null>(null);
   const [error, setError] = useState(false);
   useEffect(() => {
+    let cancelled = false;
     window.EXCALIDRAW_ASSET_PATH = '/excalidraw/';
-    import('@/components/arxdraw')
-      .then((m) => setEditor(() => m.default))
-      .catch(() => setError(true));
+    // UML skeleton conversion measures text immediately. Load its font before
+    // mounting the editor so fallback-font widths cannot clip the first scene.
+    const font = new FontFace(
+      'Cascadia',
+      'url(/excalidraw/fonts/Cascadia/CascadiaCode-Regular.woff2)',
+    );
+    Promise.all([import('@/components/arxdraw'), font.load()])
+      .then(([module, loadedFont]) => {
+        if (cancelled) return;
+        document.fonts.add(loadedFont);
+        setEditor(() => module.default);
+      })
+      .catch(() => {
+        if (!cancelled) setError(true);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
   return Editor ? (
     <Editor />

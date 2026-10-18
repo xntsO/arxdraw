@@ -1,4 +1,8 @@
-/** Native, editable UML symbols. These deliberately stay outside the shared class model. */
+import {
+  isNativeElementKind,
+  isNativeRelationshipKind,
+} from './native-model-types.ts';
+/** Native, editable UML symbols with opt-in shared semantic identity. */
 export type PracticeDiagramKind =
   | 'use-case'
   | 'activity'
@@ -8,7 +12,15 @@ export type PracticeDiagramKind =
   | 'deployment'
   | 'object'
   | 'package'
+  | 'data-flow'
   | 'communication';
+
+export type SymbolOptions = {
+  slots?: string;
+  lifelineHeight?: number;
+  processNumber?: string;
+  storeId?: string;
+};
 
 export type PracticeSkeleton = {
   id: string;
@@ -74,8 +86,14 @@ export const diagramKinds: readonly {
   },
   {
     id: 'communication',
-    label: 'Communication',
+    label: 'Communication / Collaboration',
     description: 'Objects and numbered messages',
+  },
+  {
+    id: 'data-flow',
+    label: 'Data flow',
+    description:
+      'Processes, external entities, data stores, and directed data flows',
   },
 ];
 const catalog: Record<PracticeDiagramKind, PracticeTool[]> = {
@@ -84,6 +102,7 @@ const catalog: Record<PracticeDiagramKind, PracticeTool[]> = {
     { id: 'use-case', label: 'Use case' },
     { id: 'system', label: 'System boundary' },
     { id: 'association', label: 'Association' },
+    { id: 'directed-association', label: 'Uni-association' },
     { id: 'include', label: 'Include' },
     { id: 'extend', label: 'Extend' },
     { id: 'generalization', label: 'Generalization' },
@@ -109,11 +128,14 @@ const catalog: Record<PracticeDiagramKind, PracticeTool[]> = {
     { id: 'activation', label: 'Activation' },
     { id: 'message', label: 'Call message' },
     { id: 'async-message', label: 'Async message' },
+    { id: 'self-message', label: 'Self message' },
     { id: 'return', label: 'Return message' },
+    { id: 'destruction', label: 'Destruction marker' },
     { id: 'fragment', label: 'Alternative fragment' },
     { id: 'loop-fragment', label: 'Loop fragment' },
   ],
   component: [
+    { id: 'actor', label: 'Actor' },
     { id: 'component', label: 'Component' },
     { id: 'provided-interface', label: 'Provided interface' },
     { id: 'required-interface', label: 'Required interface' },
@@ -143,10 +165,21 @@ const catalog: Record<PracticeDiagramKind, PracticeTool[]> = {
     { id: 'actor', label: 'Actor' },
     { id: 'link', label: 'Link' },
     { id: 'numbered-message', label: 'Numbered message' },
+    { id: 'self-message', label: 'Self message' },
+  ],
+  'data-flow': [
+    { id: 'dfd-process', label: 'Process' },
+    { id: 'dfd-entity', label: 'External entity' },
+    { id: 'dfd-store', label: 'Data store' },
+    { id: 'data-flow', label: 'Data flow' },
   ],
 };
 export function practiceTools(kind: PracticeDiagramKind): PracticeTool[] {
-  return catalog[kind].map((tool) => ({ ...tool }));
+  return [
+    ...catalog[kind].map((tool) => ({ ...tool })),
+    { id: 'note', label: 'Note' },
+    { id: 'note-link', label: 'Note anchor' },
+  ];
 }
 const uid = () => crypto.randomUUID();
 const ink = '#1e1e1e';
@@ -240,6 +273,10 @@ const connectorIds = new Set([
   'import',
   'merge',
   'numbered-message',
+  'data-flow',
+  'self-message',
+  'directed-association',
+  'note-link',
 ]);
 export function isPracticeConnector(toolId: string): boolean {
   return connectorIds.has(toolId);
@@ -259,6 +296,7 @@ export function connectorSkeleton(
     'assembly',
     'communication-path',
     'link',
+    'note-link',
   ].includes(toolId);
   const dashed = [
     'include',
@@ -268,12 +306,14 @@ export function connectorSkeleton(
     'deploy',
     'import',
     'merge',
+    'note-link',
   ].includes(toolId);
   const defaultLabel: Record<string, string> = {
     include: '«include»',
     extend: '«extend»',
     transition: 'event [guard] / action',
     message: 'message()',
+    'self-message': 'operation()',
     'async-message': 'signal()',
     return: 'result',
     deploy: '«deploy»',
@@ -282,18 +322,39 @@ export function connectorSkeleton(
     'numbered-message': '1: message()',
   };
   const caption = label ?? defaultLabel[toolId];
+  const arrowId = uid();
+  const self =
+    toolId === 'self-message' ||
+    (startId !== undefined &&
+      startId === endId &&
+      ['message', 'async-message', 'return', 'numbered-message'].includes(
+        toolId,
+      ));
+  const selfHeight = Math.max(44, endY - y);
   return {
-    ...line(x, y, [
-      [0, 0],
-      [endX - x, endY - y],
-    ]),
+    ...line(
+      x,
+      y,
+      self
+        ? [
+            [0, 0],
+            [90, 0],
+            [90, selfHeight],
+            [endX - x, selfHeight],
+          ]
+        : [
+            [0, 0],
+            [endX - x, endY - y],
+          ],
+    ),
     type: 'arrow',
+    id: arrowId,
     startArrowhead: null,
     endArrowhead: plain
       ? null
       : toolId === 'generalization'
         ? 'triangle_outline'
-        : toolId === 'message'
+        : toolId === 'message' || toolId === 'self-message'
           ? 'triangle'
           : 'arrow',
     strokeStyle: dashed ? 'dashed' : 'solid',
@@ -302,6 +363,19 @@ export function connectorSkeleton(
       : {}),
     ...(startId ? { start: { id: startId } } : {}),
     ...(endId ? { end: { id: endId } } : {}),
+    ...(isNativeRelationshipKind(toolId)
+      ? {
+          customData: {
+            uml: {
+              id: uid(),
+              viewId: arrowId,
+              kind: toolId,
+              role: 'edge',
+              name: caption ?? '',
+            },
+          },
+        }
+      : {}),
   };
 }
 /** x/y is the top-left corner. All text is ordinary Excalidraw text or bound labels. */
@@ -310,9 +384,67 @@ export function symbolSkeletons(
   x: number,
   y: number,
   label?: string,
+  options: SymbolOptions = {},
+): PracticeSkeleton[] {
+  if (
+    options.lifelineHeight !== undefined &&
+    (!Number.isFinite(options.lifelineHeight) ||
+      options.lifelineHeight <= 0 ||
+      options.lifelineHeight > 20000)
+  )
+    throw new Error(
+      'Lifeline height must be greater than zero and at most 20000.',
+    );
+  const parts = plainSymbolSkeletons(toolId, x, y, label, options);
+  if (!isNativeElementKind(toolId)) return parts;
+  const id = uid();
+  const named =
+    parts.find((part) => part.label !== undefined) ??
+    parts.find((part) => part.type === 'text');
+  const rawName = named?.label?.text ?? named?.text ?? label ?? toolId;
+  const prefixMatch = /^(«[^»]+»\n)/.exec(rawName);
+  const labelPrefix = prefixMatch?.[1] ?? '';
+  const name = rawName.slice(labelPrefix.length);
+  return parts.map((part, index) => ({
+    ...part,
+    customData: {
+      ...(toolId === 'object' && part === named
+        ? { umlNeedsMeasure: true }
+        : {}),
+      uml: {
+        id,
+        viewId: parts[0]?.id,
+        kind: toolId,
+        role:
+          part === named && part.type === 'text'
+            ? 'name'
+            : index === 0
+              ? 'node'
+              : 'decor',
+        name,
+        ...(part === named && labelPrefix ? { labelPrefix } : {}),
+      },
+    },
+  }));
+}
+function plainSymbolSkeletons(
+  toolId: string,
+  x: number,
+  y: number,
+  label?: string,
+  options: SymbolOptions = {},
 ): PracticeSkeleton[] {
   if (isPracticeConnector(toolId))
-    return [connectorSkeleton(toolId, x, y, x + 220, y, label)];
+    return [
+      connectorSkeleton(
+        toolId,
+        x,
+        y,
+        toolId === 'self-message' ? x : x + 220,
+        y,
+        label,
+      ),
+    ];
   switch (toolId) {
     case 'actor':
       return grouped([
@@ -390,7 +522,7 @@ export function symbolSkeletons(
           y + 60,
           [
             [0, 0],
-            [0, 400],
+            [0, options.lifelineHeight ?? 400],
           ],
           { strokeStyle: 'dashed' },
         ),
@@ -401,6 +533,20 @@ export function symbolSkeletons(
           backgroundColor: '#ffffff',
         }),
       ];
+    case 'destruction':
+      return grouped([
+        shape('rectangle', x, y, 28, 28, undefined, {
+          strokeColor: 'transparent',
+        }),
+        line(x, y, [
+          [0, 0],
+          [28, 28],
+        ]),
+        line(x + 28, y, [
+          [0, 0],
+          [-28, 28],
+        ]),
+      ]);
     case 'loop-fragment':
       return grouped([
         shape('rectangle', x, y, 520, 240),
@@ -451,6 +597,9 @@ export function symbolSkeletons(
       ]);
     case 'required-interface':
       return grouped([
+        shape('rectangle', x, y, 105, 78, undefined, {
+          strokeColor: 'transparent',
+        }),
         line(x, y + 24, [
           [0, 0],
           [54, 0],
@@ -507,24 +656,90 @@ export function symbolSkeletons(
           `«artifact»\n${label ?? 'application.jar'}`,
         ),
       ];
-    case 'object':
+    case 'object': {
+      const header = label ?? 'object : Class';
+      const slots = options.slots ?? 'attribute = value';
+      const width = Math.max(
+        220,
+        Math.min(
+          520,
+          Math.max(...header.split('\n').map((row) => row.length)) * 9 + 28,
+        ),
+      );
+      const headerHeight = Math.max(48, header.split('\n').length * 22 + 20);
+      const height =
+        headerHeight + Math.max(62, slots.split('\n').length * 22 + 24);
       return grouped([
-        shape('rectangle', x, y, 220, 110),
-        text(x + 14, y + 14, label ?? 'object : Class'),
-        line(x + 14, y + 37, [
+        shape('rectangle', x, y, width, height),
+        text(x + 14, y + 10, header),
+        line(x + 14, y + headerHeight - 8, [
           [0, 0],
-          [190, 0],
+          [width - 28, 0],
         ]),
-        line(x, y + 48, [
+        line(x, y + headerHeight, [
           [0, 0],
-          [220, 0],
+          [width, 0],
         ]),
-        text(x + 14, y + 62, 'attribute = value', { fontSize: 16 }),
+        text(x + 14, y + headerHeight + 12, slots, { fontSize: 16 }),
+      ]);
+    }
+    case 'dfd-process':
+      return [
+        shape(
+          'ellipse',
+          x,
+          y,
+          210,
+          120,
+          `${options.processNumber ? `${options.processNumber}\n` : ''}${label ?? (options.processNumber ? 'Process data' : '1.0\nProcess data')}`,
+        ),
+      ];
+    case 'dfd-entity':
+      return [shape('rectangle', x, y, 180, 80, label ?? 'External entity')];
+    case 'dfd-store':
+      return grouped([
+        shape('rectangle', x, y, 250, 72, undefined, {
+          strokeColor: 'transparent',
+        }),
+        line(x, y, [
+          [0, 0],
+          [250, 0],
+        ]),
+        line(x, y + 72, [
+          [0, 0],
+          [250, 0],
+        ]),
+        text(
+          x + 12,
+          y + 24,
+          `${options.storeId ? `${options.storeId}  ` : ''}${label ?? (options.storeId ? 'Data store' : 'D1  Data store')}`,
+          { fontSize: 17 },
+        ),
       ]);
     case 'package':
       return grouped([
         shape('rectangle', x, y + 28, 230, 140, label ?? 'Package'),
         shape('rectangle', x, y, 94, 28),
+      ]);
+    case 'note':
+      return grouped([
+        shape('rectangle', x, y, 220, 120, undefined, {
+          strokeColor: 'transparent',
+        }),
+        line(x, y, [
+          [0, 0],
+          [195, 0],
+          [220, 25],
+          [220, 120],
+          [0, 120],
+          [0, 0],
+        ]),
+        line(x + 195, y, [
+          [0, 0],
+          [0, 25],
+          [25, 25],
+        ]),
+        text(x + 12, y + 34, label ?? 'Note', { fontSize: 16 }),
       ]);
     default:
       throw new Error(`Unknown UML tool: ${toolId}`);
@@ -540,6 +755,7 @@ const titles: Record<PracticeDiagramKind, string> = {
   object: 'Order instances',
   package: 'Application packages',
   communication: 'Checkout messages',
+  'data-flow': 'Reservation data flow',
 };
 export function exampleTitle(kind: PracticeDiagramKind): string {
   return titles[kind];
@@ -582,6 +798,17 @@ export function exampleSkeletons(
     );
   };
   switch (kind) {
+    case 'data-flow': {
+      const passenger = add('dfd-entity', 0, 140, 'Passenger');
+      const reserve = add('dfd-process', 330, 120, '1.0\nReserve ticket');
+      const store = add('dfd-store', 700, 140, 'D1  Reservations');
+      const issue = add('dfd-process', 330, 390, '2.0\nIssue ticket');
+      edge('data-flow', passenger, reserve, 'Reservation details');
+      edge('data-flow', reserve, store, 'Reservation record');
+      edge('data-flow', store, issue, 'Confirmed booking', true);
+      edge('data-flow', issue, passenger, 'Ticket');
+      break;
+    }
     case 'use-case': {
       const boundary = add('system', 190, 0, 'Online shop');
       boundary.width = 610;
