@@ -25,6 +25,7 @@ export function useNativeSlots(root: RefObject<HTMLDivElement | null>) {
         toolbar: host.querySelector('.App-toolbar > .Stack_horizontal'),
         properties:
           host.querySelector('.App-menu_top__left') ||
+          host.querySelector('.excalidraw--mobile') ||
           host.querySelector('.layer-ui__wrapper'),
         history: host.querySelector('.undo-redo-buttons'),
         helpHeader: document.querySelector(
