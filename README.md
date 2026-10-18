@@ -6,7 +6,7 @@ A UML drawing workspace using the Excalidraw editor.
 
 See [the feature checklist](FEATURES.md) for implemented workflows, release checks, and remaining ArgoUML compatibility gaps.
 
-For COMP371 exam practice, open **COMP371 labs** in the toolbar. The [lab guide and checklist](LABS.md) maps all 37 manual exercises to blank starts and 43 editable worked diagrams, including DFD levels 0, 1 and 2.
+For COMP371 exam practice, press **Ctrl+Alt+B** or swipe with **three fingers on the touchscreen** to open the hidden lab browser. The [lab guide and checklist](LABS.md) maps all 37 manual exercises to blank starts and 43 editable worked diagrams, including DFD levels 0, 1 and 2.
 
 ## Start practicing
 

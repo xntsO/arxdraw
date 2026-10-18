@@ -37,6 +37,7 @@ This checklist distinguishes drawing support from model semantics. A shape on th
 - [x] All 29 numbered manual exercises and eight additional practice prompts.
 - [x] 37 blank practice starts and 43 original editable worked diagrams.
 - [x] Searchable lab browser, manual page references and persistent self-checklists.
+- [x] Lab browser hidden from normal navigation; reveal with Ctrl+Alt+B or a three-finger touchscreen swipe.
 - [x] All worked diagrams pass real converter, binding, serialization, duplication and merge checks.
 - [x] DFD examples preserve external flows and the expanded process boundary across levels.
 

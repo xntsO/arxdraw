@@ -37,7 +37,6 @@ import {
   Check,
   CircleAlert,
   Palette,
-  BookOpen,
   ArrowUp,
   ArrowDown,
 } from 'lucide-react';
@@ -2420,6 +2419,15 @@ export default function ArxDraw() {
   );
   /** Project-level shortcuts; runs before Excalidraw's document handlers. */
   function handleKey(e: KeyboardEvent) {
+    if (
+      e.ctrlKey && e.altKey && !e.metaKey && !e.shiftKey &&
+      (e.code === 'KeyB' || e.key.toLowerCase() === 'b')
+    ) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!e.repeat) setLabsOpen((open) => !open);
+      return;
+    }
     const target = e.target as HTMLElement;
     // Keys in dialogs outside the editor keep project-level undo, but
     // Escape and navigation belong to the dialog. Focus can fall back to
@@ -2479,6 +2487,74 @@ export default function ArxDraw() {
     const listen = (e: KeyboardEvent) => keyHandler.current(e);
     window.addEventListener('keydown', listen, true);
     return () => window.removeEventListener('keydown', listen, true);
+  }, []);
+  useEffect(() => {
+    // Touchscreens expose individual fingers; trackpad gestures may belong to the OS.
+    let swipe: {
+      startedAt: number;
+      points: Map<number, { startX: number; startY: number; x: number; y: number }>;
+    } | null = null;
+    let consuming = false;
+    const consume = (event: TouchEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+    };
+    const start = (event: TouchEvent) => {
+      if (consuming) {
+        swipe = null; // An extra finger invalidates the gesture until release.
+        consume(event);
+        return;
+      }
+      if (event.touches.length !== 3 || !(event.target instanceof Node) ||
+          !root.current?.contains(event.target)) return;
+      consuming = true;
+      swipe = {
+        startedAt: performance.now(),
+        points: new Map(Array.from(event.touches, (touch) => [touch.identifier, {
+          startX: touch.clientX, startY: touch.clientY,
+          x: touch.clientX, y: touch.clientY,
+        }])),
+      };
+      consume(event);
+    };
+    const move = (event: TouchEvent) => {
+      if (!consuming) return;
+      consume(event);
+      for (const touch of Array.from(event.changedTouches)) {
+        const point = swipe?.points.get(touch.identifier);
+        if (point) { point.x = touch.clientX; point.y = touch.clientY; }
+      }
+    };
+    const end = (event: TouchEvent) => {
+      if (!consuming) return;
+      move(event);
+      if (swipe && performance.now() - swipe.startedAt <= 1200) {
+        const deltas = [...swipe.points.values()].map((p) => ({ x: p.x - p.startX, y: p.y - p.startY }));
+        const dx = deltas.reduce((sum, p) => sum + p.x, 0);
+        const dy = deltas.reduce((sum, p) => sum + p.y, 0);
+        const horizontal = Math.abs(dx) >= Math.abs(dy);
+        const direction = Math.sign(horizontal ? dx : dy);
+        // All three fingers must travel together, excluding taps and pinches.
+        if (deltas.every((p) => {
+          const along = horizontal ? p.x : p.y;
+          const across = horizontal ? p.y : p.x;
+          return along * direction >= 60 && Math.abs(across) <= Math.abs(along);
+        })) setLabsOpen(true);
+      }
+      swipe = null;
+      if (event.touches.length === 0) consuming = false;
+    };
+    const cancel = () => { swipe = null; consuming = false; };
+    window.addEventListener('touchstart', start, { capture: true, passive: false });
+    window.addEventListener('touchmove', move, { capture: true, passive: false });
+    window.addEventListener('touchend', end, { capture: true, passive: false });
+    window.addEventListener('touchcancel', cancel, true);
+    return () => {
+      window.removeEventListener('touchstart', start, true);
+      window.removeEventListener('touchmove', move, true);
+      window.removeEventListener('touchend', end, true);
+      window.removeEventListener('touchcancel', cancel, true);
+    };
   }, []);
   return (
     <div
@@ -2552,16 +2628,6 @@ export default function ArxDraw() {
         }}
         renderTopRightUI={(isMobile) => (
           <div className="arx-top-right">
-            <button
-              type="button"
-              className="arx-diagram-switch arx-labs-entry"
-              aria-label="COMP371 labs"
-              title="COMP371 lab manual exercises and self-checklists"
-              onClick={() => setLabsOpen(true)}
-            >
-              <BookOpen size={16} aria-hidden="true" />
-              {!isMobile && <span>COMP371 labs</span>}
-            </button>
             <button
               type="button"
               className="arx-diagram-switch"
@@ -2675,12 +2741,6 @@ export default function ArxDraw() {
           </MainMenu.Item>
           <MainMenu.Separator />
           <MainMenu.Item
-            icon={<BookOpen size={16} />}
-            onSelect={() => setLabsOpen(true)}
-          >
-            COMP371 labs
-          </MainMenu.Item>
-          <MainMenu.Item
             icon={<Network size={16} />}
             onSelect={addPracticeExamples}
           >
@@ -2715,12 +2775,6 @@ export default function ArxDraw() {
               <span className="arx-welcome-name">ArxDraw</span>
             </WelcomeScreen.Center.Logo>
             <WelcomeScreen.Center.Menu>
-              <WelcomeScreen.Center.MenuItem
-                icon={<BookOpen size={16} />}
-                onSelect={() => setLabsOpen(true)}
-              >
-                COMP371 labs
-              </WelcomeScreen.Center.MenuItem>
               <WelcomeScreen.Center.MenuItem
                 icon={<FolderOpen size={16} />}
                 onSelect={() => chooseFile(false)}
