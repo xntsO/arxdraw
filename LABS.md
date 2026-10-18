@@ -9,7 +9,7 @@ The worked examples are original study models, not official answers. They use th
 1. Press **Ctrl+Alt+B** or swipe with **three fingers on the touchscreen** to open **COMP371 labs**. Its toolbar, menu and welcome-screen entries are hidden. Ctrl+Alt+B also closes the panel; Escape or Close dismisses it. A swipe can travel in any direction, at least 60 pixels within 1.2 seconds. Trackpad gestures handled by the operating system may not reach the browser; use the keyboard shortcut instead.
 2. Search for the exercise or filter by diagram type. Read its objective and page reference.
 3. Choose **Start blank** to practise, or **Open worked example** to inspect an editable model. The app adds it to your current workspace and offers Undo.
-4. Use **UML → Tools** to place symbols and connectors. Edit model names in Properties; double-click canvas text to edit object values or annotations.
+4. Use **UML → Draw** to place symbols and connectors, and **Pages** to switch diagrams. Edit model names in Properties; double-click canvas text to edit object values or annotations.
 5. Use **Check model** for structural findings. Use the lab's self-checklist to review the meaning of your diagram. Checklist ticks are your own assessment, not an exam grade.
 6. Save a portable **.arxdraw** file with Ctrl+S. Reopen that file to rehearse recovery, and export PNG/SVG for a printable copy.
 

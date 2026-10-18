@@ -79,10 +79,44 @@
     grid-template-columns: repeat(12, minmax(0, 1fr));
   }
 }
-.excalidraw .arx-uml-tool .ToolIcon__keybinding {
-  font-size: 8px;
-  right: 2px;
-  bottom: 2px;
+.excalidraw .arx-uml-tool .ToolIcon__icon {
+  flex-direction: column;
+  gap: 1px;
+}
+.excalidraw .arx-uml-tool .ToolIcon__icon svg {
+  width: 16px;
+  height: 16px;
+}
+.arx-tool-caption {
+  font-size: 9px;
+  line-height: 10px;
+  font-weight: 600;
+}
+.arx-panel-intro {
+  margin: 0 0 12px;
+  color: var(--text-secondary-color);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.arx-model-row.arx-diagram-row {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 4px;
+  padding: 6px 0;
+}
+.arx-model-row.arx-diagram-row > button:first-child {
+  grid-column: 1 / -1;
+}
+.arx-model-row.arx-diagram-row > button:not(:first-child) {
+  min-height: 36px;
+}
+.arx-model-row.arx-diagram-row .arx-row-text > span {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.arx-diagram-switch[aria-expanded='true'] {
+  background: var(--color-primary-light);
+  color: var(--color-primary-darker);
 }
 .arx-uml-visible .excalidraw .selected-shape-actions {
   display: none;

@@ -10,9 +10,9 @@ For COMP371 exam practice, press **Ctrl+Alt+B** or swipe with **three fingers on
 
 ## Start practicing
 
-Open the main menu and choose **Practice examples** to add editable examples for all eleven diagram types. Use **UML → Diagrams** to switch between them.
+Open the main menu and choose **Practice examples** to add editable examples for all eleven diagram types. Use **Pages** to switch between them. Each page contains one diagram; the **UML** toolbar button opens drawing symbols.
 
-To start from scratch, choose **New diagram**, select a type, and choose **Blank diagram** or **Example diagram**. In **UML → Tools**, select the diagram toolset and a symbol, then click the canvas. Connector tools use native click-and-drag arrows with the matching UML notation. Double-click labels to edit them.
+To start from scratch, choose **Pages → New page**, select a type, and choose **Blank diagram** or **Example diagram**. In **UML → Draw**, select the diagram type and a symbol, then click the canvas. Connector tools use native click-and-drag arrows with the matching UML notation. Double-click labels to edit them.
 
 ## Working features
 

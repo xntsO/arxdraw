@@ -32,6 +32,7 @@ import {
   Pencil,
   Trash2,
   Network,
+  Files,
   Copy,
   ArrowLeft,
   Check,
@@ -1618,7 +1619,8 @@ export default function ArxDraw() {
               </small>
             </>
           ) : (
-            'UML'
+            panelTab === 'tools' ? 'UML drawing tools' :
+            panelTab === 'model' ? 'Shared model' : 'Diagram pages'
           )}
         </span>
         {(editClass || rel || nativeEdit) && hasSelection && (
@@ -1648,13 +1650,14 @@ export default function ArxDraw() {
           }
         >
           <TabsList className="arx-panel-tabs" aria-label="UML sections">
-            <TabsTrigger value="tools">Tools</TabsTrigger>
+            <TabsTrigger value="tools">Draw</TabsTrigger>
             <TabsTrigger value="model">Model</TabsTrigger>
-            <TabsTrigger value="diagrams">Diagrams</TabsTrigger>
+            <TabsTrigger value="diagrams">Pages</TabsTrigger>
           </TabsList>
           <TabsContent value="tools">
+            <p className="arx-panel-intro">Choose a symbol, then place it on the canvas.</p>
             <Choice
-              label="Diagram tools"
+              label="Diagram type"
               value={paletteKind}
               onChange={(value) => {
                 setPaletteKind(value as DiagramKind);
@@ -1825,7 +1828,7 @@ export default function ArxDraw() {
                   <p className="arx-hint">
                     {modelQuery
                       ? 'No matches.'
-                      : 'Place UML symbols from Tools to add model elements.'}
+                      : 'Place UML symbols from Draw to add model elements.'}
                   </p>
                 )}
               </fieldset>
@@ -1876,6 +1879,7 @@ export default function ArxDraw() {
             )}
           </TabsContent>
           <TabsContent value="diagrams">
+            <p className="arx-panel-intro">Each page is a separate diagram in this project.</p>
             {project.diagrams.length > 4 && (
               <Input
                 type="search"
@@ -1888,14 +1892,14 @@ export default function ArxDraw() {
             )}
             <div className="arx-list">
               {matchingDiagrams.map((d) => (
-                <div className="arx-model-row" key={d.id}>
+                <div className="arx-model-row arx-diagram-row" key={d.id}>
                   <button
                     className={d.id === active.id ? 'active' : ''}
                     aria-current={d.id === active.id ? 'page' : undefined}
                     title={`${d.name} · ${kindLabel(d.kind)} diagram`}
                     onClick={() => switchDiagram(d.id)}
                   >
-                    <Network size={15} />
+                    <Files size={15} />
                     <span className="arx-row-text">
                       <span>{d.name}</span>
                       <small>{kindLabel(d.kind)}</small>
@@ -1960,7 +1964,7 @@ export default function ArxDraw() {
               }}
             >
               <Plus size={16} />
-              New diagram
+              New page
             </button>
             <p className="arx-hint">
               <kbd>Alt</kbd>+<kbd>PgUp</kbd> / <kbd>PgDn</kbd> switches
@@ -2631,12 +2635,13 @@ export default function ArxDraw() {
             <button
               type="button"
               className="arx-diagram-switch"
-              aria-label={`Diagrams: ${active.name}, ${activeIndex + 1} of ${project.diagrams.length}`}
-              title={`${active.name} · ${kindLabel(active.kind)} diagram. Alt+PgUp / Alt+PgDn switches diagrams.`}
+              aria-label={`Pages: ${active.name}, page ${activeIndex + 1} of ${project.diagrams.length}`}
+              aria-expanded={panel && !styleMode && !editClass && !rel && !nativeEdit && panelTab === 'diagrams'}
+              title={`Manage diagram pages. Current page: ${active.name}. Alt+PgUp / Alt+PgDn switches pages.`}
               onClick={() => openUml('diagrams')}
             >
-              <Network size={14} aria-hidden="true" />
-              {!isMobile && <span>{active.name}</span>}
+              <Files size={14} aria-hidden="true" />
+              <span>{isMobile ? 'Pages' : `Pages · ${active.name}`}</span>
               <small>
                 {activeIndex + 1}/{project.diagrams.length}
               </small>
@@ -2718,10 +2723,10 @@ export default function ArxDraw() {
           </MainMenu.Item>
           <MainMenu.Separator />
           <MainMenu.Item
-            icon={<Network size={16} />}
+            icon={<Files size={16} />}
             onSelect={() => openUml('diagrams')}
           >
-            Diagrams
+            Diagram pages
           </MainMenu.Item>
           <MainMenu.Item
             icon={<Box size={16} />}
@@ -2812,18 +2817,19 @@ export default function ArxDraw() {
         )}
       {slots.toolbar &&
         createPortal(
-          <label className="ToolIcon Shape arx-uml-tool" title="UML">
+          <label className="ToolIcon Shape arx-uml-tool" title="Draw UML symbols">
             <input
               className="ToolIcon_type_radio ToolIcon_size_medium"
               type="radio"
               name="arxdraw-uml-tool"
-              aria-label="UML"
-              checked={tool === 'custom'}
-              onChange={() => openUml()}
+              aria-label="Draw UML symbols"
+              checked={tool === 'custom' && panel && panelTab === 'tools'}
+              readOnly
+              onClick={() => openUml('tools')}
             />
             <div className="ToolIcon__icon">
               <Network size={20} />
-              <span className="ToolIcon__keybinding">UML</span>
+              <span className="arx-tool-caption">UML</span>
             </div>
           </label>,
           slots.toolbar,
